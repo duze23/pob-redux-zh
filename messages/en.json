@@ -1251,12 +1251,13 @@
   "import_gb_passives": "{count} passives",
   "import_gb_passives_partial": "{allocated} of {requested} passives",
   "import_gb_gear": ", {count} items",
+  "import_gb_no_gear": ", no gear in this file",
   "import_gb_hints": ", {count} gear hints in Notes",
   "import_gb_issues": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
-      "match": { "countPlural=one": " — {count} issue (see console)", "countPlural=*": " — {count} issues (see console)" }
+      "match": { "countPlural=one": " — {count} issue (see Notes)", "countPlural=*": " — {count} issues (see Notes)" }
     }
   ],
   "import_gb_unknown_passive": "unknown passive: {name}",

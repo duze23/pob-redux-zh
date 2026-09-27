@@ -6051,14 +6051,10 @@ M.import_game_build = function(p)
 	spec:AddUndoState()
 	-- PoB prunes nodes it cannot connect to the class start; report rather
 	-- than pretend they were allocated
-	local allocatedCount, normalPoints, prunedNames = 0, 0, {}
+	local allocatedCount, prunedNames = 0, {}
 	for _, nid in ipairs(hashList) do
-		local node = spec.allocNodes[nid]
-		if node then
+		if spec.allocNodes[nid] then
 			allocatedCount = allocatedCount + 1
-			if not node.ascendancyName and node.type ~= "ClassStart" and (node.allocMode or 0) == 0 then
-				normalPoints = normalPoints + 1
-			end
 		elseif #prunedNames < 5 then
 			prunedNames[#prunedNames + 1] = (spec.nodes[nid] and spec.nodes[nid].dn) or tostring(nid)
 		end
@@ -6066,14 +6062,13 @@ M.import_game_build = function(p)
 	local pruned = #hashList - allocatedCount
 	if pruned > 0 then
 		problems[#problems + 1] = string.format(
-			"%d of %d passives could not be connected to the tree from the %s start and were dropped by PoB (%s%s)",
+			"%d of %d passives could not be connected to the tree from the %s start and were dropped by PoB (%s%s). An anoint or a jewel such as Megalomaniac may grant them; add that item to get them back.",
 			pruned, #hashList, className(classId), table.concat(prunedNames, ", "), pruned > #prunedNames and ", …" or "")
 	end
-	-- the format carries no character level; estimate one from the points
-	-- spent (quest points come along the way, so points ≈ level early on)
-	if normalPoints > 0 then
-		build.characterLevel = math.min(100, math.max(1, normalPoints + 1))
-		build.characterLevelAutoMode = false
+	-- the format carries no character level; gem levels below follow the estimate
+	if allocatedCount > 0 then
+		build.characterLevelAutoMode = true
+		build:EstimatePlayerProgress()
 	end
 	-- skills: one socket group per entry. The game references BaseItemTypes
 	-- ids; PoB keys some gems (notably supports) under internal ids with the
@@ -6273,6 +6268,15 @@ M.import_game_build = function(p)
 			if hint.unique then notes[#notes + 1] = hint.unique end
 			notes[#notes + 1] = hint.text
 		end
+	end
+	local issues = {}
+	for _, s in ipairs(problems) do issues[#issues + 1] = s end
+	for _, s in ipairs(missing) do issues[#issues + 1] = "Unknown passive: " .. s end
+	for _, s in ipairs(missingSkills) do issues[#issues + 1] = "Unknown gem: " .. s end
+	if #issues > 0 then
+		notes[#notes + 1] = ""
+		notes[#notes + 1] = "== Import issues =="
+		for _, s in ipairs(issues) do notes[#notes + 1] = "- " .. s end
 	end
 	if #notes > 0 then M.set_notes({ text = table.concat(notes, "\n") }) end
 	if addedGroups > 0 then pickMainSkill() end

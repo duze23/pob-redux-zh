@@ -278,11 +278,10 @@
       const r = await build.run(() => engine.importGameBuild(json, name));
       if (r) {
         const issues = [...r.warnings, ...r.missingPassives.map((p) => m.import_gb_unknown_passive({ name: p })), ...r.missingSkills.map((s) => m.import_gb_unknown_gem({ name: s }))];
-        const gear = r.gearItems > 0 ? m.import_gb_gear({ count: r.gearItems }) : "";
+        const gear = r.gearItems > 0 ? m.import_gb_gear({ count: r.gearItems }) : r.gearHints > 0 ? "" : m.import_gb_no_gear();
         const hints = r.gearHints > 0 ? m.import_gb_hints({ count: r.gearHints }) : "";
         const passives = r.allocated < r.requested ? m.import_gb_passives_partial({ allocated: r.allocated, requested: r.requested }) : m.import_gb_passives({ count: r.allocated });
-        say(m.import_gb_summary({ passives, groups: r.skillGroups, gear, hints, issues: issues.length ? m.import_gb_issues({ count: issues.length }) : "" }));
-        if (issues.length) console.warn(`.build import issues for ${name}:`, issues);
+        build.say(m.import_gb_summary({ passives, groups: r.skillGroups, gear, hints, issues: issues.length ? m.import_gb_issues({ count: issues.length }) : "" }));
         build.view = "tree";
       } else if (build.error) {
         say(m.import_failed({ error: build.error }));
