@@ -37,18 +37,20 @@ local function frame()
 end
 
 -- Calcs owns socket and active selection; unsupported detail selectors follow the main skill.
-local CALCS_TWINS = {
-	skillPart = "skillPartCalcs",
-	skillStageCount = "skillStageCountCalcs",
-	skillMineCount = "skillMineCountCalcs",
-	skillMinion = "skillMinionCalcs",
-	skillMinionItemSet = "skillMinionItemSetCalcs",
-	skillMinionSkill = "skillMinionSkillCalcs",
-	skillMinionSkillStatSetIndexLookup = "skillMinionSkillStatSetIndexLookupCalcs",
-	statSet = "statSetCalcs",
+local calcsSelection = {
+	twins = {
+		skillPart = "skillPartCalcs",
+		skillStageCount = "skillStageCountCalcs",
+		skillMineCount = "skillMineCountCalcs",
+		skillMinion = "skillMinionCalcs",
+		skillMinionItemSet = "skillMinionItemSetCalcs",
+		skillMinionSkill = "skillMinionSkillCalcs",
+		skillMinionSkillStatSetIndexLookup = "skillMinionSkillStatSetIndexLookupCalcs",
+		statSet = "statSetCalcs",
+	},
 }
 
-local function syncCalcsSelection()
+function calcsSelection.sync()
 	if not build or not build.calcsTab or not build.skillsTab then return false end
 	local changed = false
 	-- Only non-default table-valued stat sets count as changed after PoB reloads them.
@@ -67,16 +69,47 @@ local function syncCalcsSelection()
 	end
 	for _, group in ipairs(build.skillsTab.socketGroupList or {}) do
 		for _, gem in ipairs(group.gemList or {}) do
-			for main, twin in pairs(CALCS_TWINS) do set(gem, twin, gem[main]) end
+			for main, twin in pairs(calcsSelection.twins) do set(gem, twin, gem[main]) end
 		end
 	end
 	return changed
 end
 
+function calcsSelection.startOnMainSkill()
+	local changed = false
+	local input = build.calcsTab.input
+	local skillNumber = build.mainSocketGroup or 1
+	if input.skill_number ~= skillNumber then
+		input.skill_number = skillNumber
+		changed = true
+	end
+	for _, group in ipairs(build.skillsTab.socketGroupList or {}) do
+		local activeSkill = group.mainActiveSkill or 1
+		if group.mainActiveSkillCalcs ~= activeSkill then
+			group.mainActiveSkillCalcs = activeSkill
+			changed = true
+		end
+	end
+	return changed
+end
+
+-- Calcs follows a main skill change unless the Calcs toolbar picked something else.
+function calcsSelection.setMainSocketGroup(index)
+	local list = build.skillsTab.socketGroupList
+	local input = build.calcsTab.input
+	if list[tonumber(input.skill_number) or 1] == list[build.mainSocketGroup or 1] then input.skill_number = index end
+	build.mainSocketGroup = index
+end
+
+function calcsSelection.setMainActiveSkill(group, index)
+	if (group.mainActiveSkillCalcs or 1) == (group.mainActiveSkill or 1) then group.mainActiveSkillCalcs = index end
+	group.mainActiveSkill = index
+end
+
 -- Mark the build dirty and run one frame: PoB rebuilds calc output, the
 -- sidebar stat list and dependent tab state inside OnFrame.
 local function refresh()
-	syncCalcsSelection()
+	calcsSelection.sync()
 	build.buildFlag = true
 	build.modFlag = true
 	local level = build.characterLevel
@@ -669,26 +702,12 @@ end
 -- Build lifecycle
 -- ---------------------------------------------------------------------------
 
--- A loaded build starts Calcs on its main skill.
 local function loaded()
 	main.__reduxBuildGeneration = main.__reduxBuildGeneration + 1
 	build = main.modes["BUILD"]
 	ensureBuild()
-	local changed = false
-	local input = build.calcsTab.input
-	local skillNumber = build.mainSocketGroup or 1
-	if input.skill_number ~= skillNumber then
-		input.skill_number = skillNumber
-		changed = true
-	end
-	for _, group in ipairs(build.skillsTab.socketGroupList or {}) do
-		local activeSkill = group.mainActiveSkill or 1
-		if group.mainActiveSkillCalcs ~= activeSkill then
-			group.mainActiveSkillCalcs = activeSkill
-			changed = true
-		end
-	end
-	if syncCalcsSelection() then changed = true end
+	local changed = calcsSelection.startOnMainSkill()
+	if calcsSelection.sync() then changed = true end
 	if changed then refresh() end
 	return M.get_build()
 end
@@ -3239,7 +3258,7 @@ end
 M.set_main_skill_options = function(p)
 	ensureBuild()
 	local group = requireGroup(p and p.groupIndex)
-	if p.mainActiveSkill ~= nil then group.mainActiveSkill = tonumber(p.mainActiveSkill) end
+	if p.mainActiveSkill ~= nil then calcsSelection.setMainActiveSkill(group, tonumber(p.mainActiveSkill)) end
 	local activeSkill = group.displaySkillList and group.displaySkillList[group.mainActiveSkill or 1]
 	local ae = activeSkill and activeSkill.activeEffect
 	local src = ae and ae.srcInstance
@@ -3765,7 +3784,7 @@ M.set_socket_group = function(p)
 	if p.includeInFullDPS ~= nil then group.includeInFullDPS = p.includeInFullDPS end
 	if p.label ~= nil then group.label = p.label end
 	if p.slot ~= nil then group.slot = (p.slot ~= "" and p.slot) or nil end
-	if p.mainActiveSkill ~= nil then group.mainActiveSkill = tonumber(p.mainActiveSkill) end
+	if p.mainActiveSkill ~= nil then calcsSelection.setMainActiveSkill(group, tonumber(p.mainActiveSkill)) end
 	if p.groupCount ~= nil then group.groupCount = math.max(tonumber(p.groupCount) or 1, 1) end
 	build.skillsTab:ProcessSocketGroup(group)
 	build.skillsTab:AddUndoState()
@@ -3777,7 +3796,7 @@ M.set_main_skill = function(p)
 	ensureBuild()
 	p = p or {}
 	local _, index = requireGroup(p.index, p.skill)
-	build.mainSocketGroup = index
+	calcsSelection.setMainSocketGroup(index)
 	refresh()
 	return M.get_skills()
 end
@@ -6257,6 +6276,7 @@ M.import_game_build = function(p)
 	end
 	if #notes > 0 then M.set_notes({ text = table.concat(notes, "\n") }) end
 	if addedGroups > 0 then pickMainSkill() end
+	calcsSelection.startOnMainSkill()
 	refresh()
 	return {
 		info = M.get_build(),
@@ -6383,7 +6403,7 @@ M.set_weapon_set = function(p)
 	if mainSocketGroup and mainSocketGroup.slot and itemsTab.slots[mainSocketGroup.slot] and itemsTab.slots[mainSocketGroup.slot].weaponSet == from then
 		for index, socketGroup in ipairs(build.skillsTab.socketGroupList) do
 			if socketGroup.slot and itemsTab.slots[socketGroup.slot] and itemsTab.slots[socketGroup.slot].weaponSet == to then
-				build.mainSocketGroup = index
+				calcsSelection.setMainSocketGroup(index)
 				break
 			end
 		end
