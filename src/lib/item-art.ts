@@ -63,6 +63,29 @@ function artUrl(map: ArtMap, path: string): string | null {
   return tag ? convertFileSrc(`${map.game}/${tag}/${path}`, "pobart") : null;
 }
 
+const recipes = new Map<string, Promise<{ name: string; url: string | null }>>();
+
+/** Tree recipes name PoE1 oils as "GoldenOil" and PoE2 emotions by the bare emotion ("Greed" is Diluted Liquid Greed). */
+export function recipeArt(game: Game, word: string): Promise<{ name: string; url: string | null }> {
+  const key = `${game}:${word}`;
+  let pending = recipes.get(key);
+  if (!pending) {
+    pending = artMap(game).then((map) => {
+      const bases = map?.bases ?? {};
+      const emotions = Object.keys(bases).filter((k) => k === `Liquid ${word}` || k.endsWith(` Liquid ${word}`));
+      const name =
+        game === "poe1"
+          ? word.replace(/Oil$/, " Oil")
+          : (emotions.find((k) => !k.startsWith("Ancient ")) ?? emotions[0] ?? `Liquid ${word}`);
+      const path = lookup(bases, name);
+      if (!map) recipes.delete(key);
+      return { name, url: map && path ? artUrl(map, path) : null };
+    });
+    recipes.set(key, pending);
+  }
+  return pending;
+}
+
 export async function itemArtUrl(item: ArtItem, supportGem = false): Promise<string | null> {
   const map = await artMap(item.game);
   const path = map && artPath(map, item, supportGem);

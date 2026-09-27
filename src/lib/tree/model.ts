@@ -51,6 +51,8 @@ export interface TNode {
   /** Hit radius; 0 = not hoverable. */
   r: number;
   hidden: boolean;
+  /** The three oils (PoE1) or emotions (PoE2) that anoint this notable. */
+  recipe: string[] | null;
 }
 
 export interface Arc {
@@ -165,6 +167,7 @@ interface RawNode {
   inactiveIcon?: string;
   masteryEffects?: { effect: number; stats: string[] }[];
   isBloodline?: boolean;
+  recipe?: string[];
 }
 
 interface RawBackground {
@@ -459,6 +462,7 @@ export function parseTree(version: string, json: string): TreeModel {
       r: kind === "mastery" ? size.base : kind === "ascStart" ? 0 : overlay ? size.overlay : 0,
       // PassiveSpec.lua drops sub-sockets with a parent; PoB regenerates them inside a socketed cluster.
       hidden: rn.aliasPassiveSocket !== undefined || rn.isProxy === true || rn.expansionJewel?.parent != null,
+      recipe: rn.recipe?.length ? rn.recipe : null,
     });
   }
 
@@ -610,6 +614,7 @@ export function withDynamicNodes(base: TreeModel, dyn: DynamicNode[], dynGroups:
       size,
       r: overlay ? size.overlay : 0,
       hidden: false,
+      recipe: null,
     });
   }
   const dynIds = new Set(dyn.map((d) => d.id));

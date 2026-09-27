@@ -13,6 +13,7 @@
   import { stripPobText } from "$lib/pobtext";
   import TimelessSearch from "$lib/components/TimelessSearch.svelte";
   import { m } from "$lib/paraglide/messages";
+  import { recipeArt } from "$lib/item-art";
 
   let timelessOpen = $state(false);
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -187,6 +188,18 @@
   const allocated = $derived(new Set(build.tree?.allocatedNodes ?? []));
   const granted = $derived(new Map((build.tree?.grantedNodes ?? []).map((g) => [g.id, g])));
   const hoverGrant = $derived(hover ? granted.get(hover.id) : undefined);
+  let hoverRecipe = $state<{ word: string; name: string; url: string | null }[] | null>(null);
+  $effect(() => {
+    const words = hover?.recipe;
+    hoverRecipe = null;
+    if (!words) return;
+    let live = true;
+    const g = game.isPoe2 ? "poe2" : "poe1";
+    Promise.all(words.map((w) => recipeArt(g, w).then((r) => ({ word: w.replace(/Oil$/, ""), ...r })))).then((list) => {
+      if (live) hoverRecipe = list;
+    });
+    return () => (live = false);
+  });
   const weaponSets = $derived(
     new Map<number, number>([...(build.tree?.weaponSet1Nodes ?? []).map((id) => [id, 1] as const), ...(build.tree?.weaponSet2Nodes ?? []).map((id) => [id, 2] as const)]),
   );
@@ -2042,6 +2055,14 @@
         {#if hover.flavour}
           <div class="tip-flav">{hover.flavour}</div>
         {/if}
+        {#if hoverRecipe}
+          <div class="tip-recipe">
+            <span class="dim">{m.tree_anoint()}</span>
+            {#each hoverRecipe as r, i (i)}
+              <span class="recipe-item" title={r.name}>{#if r.url}<img src={r.url} alt="" />{/if}{r.word}</span>
+            {/each}
+          </div>
+        {/if}
         {#if hoverBlocked}
           <div class="tip-warn">{hoverBlocked}</div>
         {/if}
@@ -2463,6 +2484,25 @@
     color: var(--c-unique);
     font-style: italic;
     font-size: var(--fs-xs);
+  }
+  .tip-recipe {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 6px;
+    font-size: var(--fs-xs);
+  }
+  .recipe-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--fg-1);
+  }
+  .recipe-item img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
   }
   .tip-warn {
     margin-top: 6px;
