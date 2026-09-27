@@ -1123,7 +1123,7 @@ M.calc_sections = function(p)
 	local out = array({})
 	for sIndex, section in ipairs(calcsTab.sectionList) do
 		if section.subSection then
-			local enabled = calcsTab:CheckFlag(section)
+			local enabled = calcsTab:CheckFlag(section, actor, env.player)
 			local colour = section.colour
 			local hex = null
 			if type(colour) == "string" then
@@ -1146,7 +1146,7 @@ M.calc_sections = function(p)
 					end)
 					sub.extra = (okExtra and extra) and extra or null
 					for ri, rowData in ipairs(subSec.data) do
-						if calcsTab:CheckFlag(rowData) then
+						if calcsTab:CheckFlag(rowData, actor, env.player) then
 							local label = rowData.label
 							if type(label) == "string" and label:find("^Socket Group") then label = "Socket Group" end
 							local row = { index = ri, label = opt(label), textSize = opt(rowData.textSize), cells = array({}) }
