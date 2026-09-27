@@ -1592,6 +1592,37 @@ M.get_tree_state = function()
 			end
 		end
 	end
+	-- Anoint and Megalomaniac passives live in grantedPassives, not spec.allocNodes.
+	local granted = array({})
+	local grantedPassives = build.calcsTab.mainEnv and build.calcsTab.mainEnv.grantedPassives or {}
+	if next(grantedPassives) then
+		local sources = {}
+		local function resolve(value)
+			if spec.ResolveGrantedPassiveNodes then return spec:ResolveGrantedPassiveNodes(value) end
+			local name = type(value) == "table" and value.name or value
+			if type(name) ~= "string" then return {} end
+			return { spec.tree.notableMap[name] or spec.tree.ascendancyMap[name] }
+		end
+		for _, slot in ipairs(build.itemsTab.orderedSlots or {}) do
+			local itemId = slot.nodeId and (spec.jewels[slot.nodeId] or slot.selItemId) or slot.selItemId
+			local item = build.itemsTab.items[itemId]
+			local mods = item and (item.modList or (item.slotModList and item.slotModList[slot.slotNum or 1]))
+			if mods and (not slot.nodeId or spec.allocNodes[slot.nodeId]) then
+				for _, mod in ipairs(mods) do
+					if mod.name == "GrantedPassive" or mod.name == "GrantedAscendancyNode" then
+						for _, node in pairs(resolve(mod.value)) do
+							if not sources[node.id] then sources[node.id] = { item = item.title or item.name, rarity = item.rarity, slot = not slot.nodeId and (slot.label or slot.slotName) or nil } end
+						end
+					end
+				end
+			end
+		end
+		for id in pairs(grantedPassives) do
+			local src = sources[id] or {}
+			granted[#granted + 1] = { id = id, source = opt(src.item), rarity = opt(src.rarity), slot = opt(src.slot) }
+		end
+		table.sort(granted, function(a, b) return a.id < b.id end)
+	end
 	local used, ascUsed, secondaryAscUsed, socketCount, ws1Used, ws2Used = countAllocNodes(spec)
 	local level = build.characterLevel or 1
 	local extra = (build.calcsTab.mainOutput or {}).ExtraPoints or 0
@@ -1604,6 +1635,7 @@ M.get_tree_state = function()
 		ascendClassName = opt(spec.curAscendClassName),
 		allocatedNodes = alloc,
 		allocatedNodeCount = #alloc,
+		grantedNodes = granted,
 		weaponSet1Nodes = weaponSetNodes[1],
 		weaponSet2Nodes = weaponSetNodes[2],
 		-- A point buys a node in either weapon set, so PoB charges only the larger set.

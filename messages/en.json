@@ -930,6 +930,8 @@
   "tree_socketed": "Socketed:",
   "tree_in_weapon_set": "weapon set {set}",
   "tree_allocated": "allocated",
+  "tree_granted_by": "Granted by:",
+  "tree_granted_unknown": "an item",
   "tree_click_removes": "click removes {count}",
   "tree_click_to_remove": "click to remove",
   "tree_right_click_switch": " · right-click to switch",

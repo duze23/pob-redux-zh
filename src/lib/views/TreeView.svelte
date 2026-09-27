@@ -185,6 +185,8 @@
   let powerRerun = false;
 
   const allocated = $derived(new Set(build.tree?.allocatedNodes ?? []));
+  const granted = $derived(new Map((build.tree?.grantedNodes ?? []).map((g) => [g.id, g])));
+  const hoverGrant = $derived(hover ? granted.get(hover.id) : undefined);
   const weaponSets = $derived(
     new Map<number, number>([...(build.tree?.weaponSet1Nodes ?? []).map((id) => [id, 1] as const), ...(build.tree?.weaponSet2Nodes ?? []).map((id) => [id, 2] as const)]),
   );
@@ -269,7 +271,7 @@
   }
 
   function nodeState(n: TNode, S: Scene): "alloc" | "path" | "unalloc" {
-    if (S.alloc.has(n.id) || S.hover?.id === n.id) return "alloc";
+    if (S.alloc.has(n.id) || S.granted.has(n.id) || S.hover?.id === n.id) return "alloc";
     if (S.path.has(n.id)) return "path";
     return "unalloc";
   }
@@ -436,6 +438,7 @@
   // per node per frame was a fifth of the frame time.
   interface Scene {
     alloc: Set<number>;
+    granted: Map<number, unknown>;
     ws: Map<number, number>;
     mode: WeaponSetMode;
     ov: typeof overrides;
@@ -463,6 +466,7 @@
     const ovAny = Object.keys(ov).length > 0;
     return {
       alloc: allocated,
+      granted,
       ws: weaponSets,
       mode: wsMode,
       ov: ovAny ? { ...ov } : ov,
@@ -528,7 +532,7 @@
   // Blitting the layer magnified past this looks soft, so it re-renders.
   const ZOOM_BAND = 1.7;
   function layerKey(S: Scene): unknown[] {
-    return [dpr, w, h, model, assetsGen, S.alloc, S.ws, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
+    return [dpr, w, h, model, assetsGen, S.alloc, S.granted, S.ws, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
   }
   function layerUsable(S: Scene): boolean {
     const L = layer;
@@ -777,7 +781,7 @@
         } else if (reach <= 0) continue;
         if (!inView(n.x, n.y, reach)) continue;
         const half = reach * scale;
-        const lit = !!ov?.effect || S.alloc.has(n.id) || S.path.has(n.id);
+        const lit = !!ov?.effect || S.alloc.has(n.id) || S.granted.has(n.id) || S.path.has(n.id);
         const dimAsc = n.asc !== null && n.asc !== S.asc;
         const sx = tx(n.x);
         const sy = ty(n.y);
@@ -824,12 +828,14 @@
       const sx = tx(n.x);
       const sy = ty(n.y);
       const isAlloc = S.alloc.has(n.id);
+      const isGranted = S.granted.has(n.id);
+      const lit = isAlloc || isGranted;
       const st = heat ? "alloc" : nodeState(n, S);
       const onPath = S.path.has(n.id);
       const dimAsc = n.asc !== null && n.asc !== S.asc;
 
       if (!A) {
-        drawFallback(ctx, n, sx, sy, isAlloc, onPath, S.hover?.id === n.id);
+        drawFallback(ctx, n, sx, sy, lit, onPath, S.hover?.id === n.id);
         continue;
       }
       // With art available, a not-yet-loaded sheet just leaves a gap for a
@@ -853,7 +859,7 @@
 
       ctx.globalAlpha = dimAsc ? 0.6 : 1;
 
-      if (heat && !isAlloc) {
+      if (heat && !lit) {
         const col = powerColor(n.id, S);
         if (col) {
           ctx.beginPath();
@@ -866,27 +872,27 @@
       if (n.kind === "socket") {
         const half = n.size.base * scale;
         if (half < DOT_PX) {
-          if (!heat || isAlloc) dots[dotBucket(n, st)].push(sx, sy, half);
+          if (!heat || lit) dots[dotBucket(n, st)].push(sx, sy, half);
         } else {
           const frameName = frameFor(n, S, st);
           if (frameName) A.draw(ctx, frameName, sx, sy, half, half);
           const jewel = S.sockets.get(n.id);
-          if (jewel && isAlloc) {
+          if (jewel && lit) {
             const art = socketArt(jewel.baseName, n.overlay?.alloc === "JewelSocketAltActive") ?? (jewel.title && A.has(jewel.title) ? jewel.title : jewel.baseName);
             if (art) drawCircularAsset(ctx, A, art, sx, sy, n.size.overlay * scale);
           }
         }
       } else {
         if (n.size.base * scale >= ICON_PX) {
-          const icon = iconFor(n, S, isAlloc);
-          if (!isAlloc && !heat) ctx.globalAlpha *= 0.7;
-          drawCircularAsset(ctx, A, icon, sx, sy, n.size.base * scale, !isAlloc && !heat);
+          const icon = iconFor(n, S, lit);
+          if (!lit && !heat) ctx.globalAlpha *= 0.7;
+          drawCircularAsset(ctx, A, icon, sx, sy, n.size.base * scale, !lit && !heat);
           ctx.globalAlpha = dimAsc ? 0.6 : 1;
         }
         const half = n.size.overlay * scale;
         const tint = tintFor(n, S);
         if (half < DOT_PX) {
-          if (n.size.overlay > 0 && (!heat || isAlloc)) dots[dotBucket(n, st, tint)].push(sx, sy, half);
+          if (n.size.overlay > 0 && (!heat || lit)) dots[dotBucket(n, st, tint)].push(sx, sy, half);
         } else {
           const frameName = frameFor(n, S, st);
           if (frameName && n.size.overlay > 0) {
@@ -902,6 +908,15 @@
         ctx.arc(sx, sy, Math.max(n.r * scale, 3), 0, Math.PI * 2);
         ctx.fillStyle = "rgba(240,106,106,0.35)";
         ctx.fill();
+      }
+      if (isGranted) {
+        ctx.beginPath();
+        ctx.arc(sx, sy, Math.max(n.r, 30) * scale + 3, 0, Math.PI * 2);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = palette.edgeAlloc;
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
       if (S.match.has(n.id)) {
         ctx.beginPath();
@@ -1029,9 +1044,8 @@
       if (!inView(n.x, n.y, nodeReach(n))) continue;
       const sx = tx(n.x);
       const sy = ty(n.y);
-      const isAlloc = S.alloc.has(n.id);
       if (!A) {
-        drawFallback(ctx, n, sx, sy, isAlloc, S.path.has(n.id), S.hover?.id === n.id);
+        drawFallback(ctx, n, sx, sy, S.alloc.has(n.id) || S.granted.has(n.id), S.path.has(n.id), S.hover?.id === n.id);
       } else if (!heat) {
         const st = nodeState(n, S);
         const half = (n.kind === "socket" ? n.size.base : n.size.overlay) * scale;
@@ -1582,6 +1596,7 @@
 
   $effect(() => {
     allocated;
+    granted;
     weaponSets;
     wsMode;
     overrides;
@@ -2008,6 +2023,12 @@
           <div class="tip-stat">
             <span class="dim">{m.tree_socketed()}</span>
             <span class="rarity" data-rarity={socketed.rarity ?? ""}>{socketed.title ?? socketed.name}</span>
+          </div>
+        {/if}
+        {#if hoverGrant}
+          <div class="tip-stat">
+            <span class="dim">{m.tree_granted_by()}</span>
+            <span class="rarity" data-rarity={hoverGrant.rarity ?? ""}>{hoverGrant.source ?? m.tree_granted_unknown()}</span>{#if hoverGrant.slot}<span class="dim"> ({hoverGrant.slot})</span>{/if}
           </div>
         {/if}
         {#each ov?.stats?.length ? ov.stats : hover.stats as s}

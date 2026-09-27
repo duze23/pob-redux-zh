@@ -485,6 +485,8 @@ export interface TreeState {
   ascendClassName: string | null;
   allocatedNodes: number[];
   allocatedNodeCount: number;
+  /** Nodes an item allocates (anoints, Megalomaniac); PoB draws them as allocated. */
+  grantedNodes: { id: number; source: string | null; rarity: string | null; slot: string | null }[];
   weaponSet1Nodes: number[];
   weaponSet2Nodes: number[];
   /** Counts weapon-set nodes too; use passivePointsSpent against a point budget. */
