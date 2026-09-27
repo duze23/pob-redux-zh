@@ -63,7 +63,8 @@ To check by hand, open Settings (the gear in the title bar, or Ctrl+,) and press
 ### Every Path of Building tab
 
 Tree, skills, items, calcs, config, notes, party and builds are all here, with PoB's tooltips and
-breakdowns.
+breakdowns. Calcs sorts PoB's sections into offence, defence and other, with DPS, EHP and the
+largest hit you can take at the top. Your buffs and the curses on the enemy show as game icons.
 
 ### Optimize
 
@@ -79,8 +80,8 @@ skills and config.
 
 ### Assistant
 
-An optional chat panel that answers questions about the open build and can change it. It is
-available in Path of Exile 2 only for now. Open it from the chat icon in the status bar or with Ctrl+K. It runs
+An optional chat panel that answers questions about the open build and can change it. It works in
+both games; Path of Exile 1 support is new and marked beta. Open it from the chat icon in the status bar or with Ctrl+K. It runs
 through a coding agent on your computer, signed in to your own plan: Claude Code, Codex, Cursor, Grok,
 OpenCode or Google Antigravity (which the app downloads for you). It can also use a model you run with Ollama.
 
@@ -96,7 +97,7 @@ every change first.
 ### MCP server
 
 Lets an AI client such as Claude Code, Claude Desktop or Cursor read and edit the open build, in
-Path of Exile 2 only for now. It is off until you turn it on in Settings, which then shows
+either game (Path of Exile 1 is in beta). It is off until you turn it on in Settings, which then shows
 the address, an access token and ready-made client settings. It listens on `127.0.0.1` only, stops
 when the app closes, and refuses any request without the token.
 
