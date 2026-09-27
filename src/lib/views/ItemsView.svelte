@@ -121,15 +121,24 @@
     };
   }
 
+  function releaseDetailScroll(pane = scrollHold?.pane) {
+    const hold = scrollHold;
+    if (!hold || hold.pane !== pane) return;
+    hold.content.style.minHeight = "";
+    scrollHold = null;
+  }
+
   $effect(() => {
     const pane = detailPane;
-    return () => {
-      const hold = scrollHold;
-      if (hold && hold.pane === pane) {
-        hold.content.style.minHeight = "";
-        scrollHold = null;
-      }
-    };
+    return () => releaseDetailScroll(pane);
+  });
+
+  // The floor only has to outlast the edit; left in place, it keeps blank space below content that shrank.
+  $effect(() => {
+    if (itemBusy) return;
+    void tick().then(() => {
+      if (!itemBusy) releaseDetailScroll();
+    });
   });
 
   async function requestPreview(
