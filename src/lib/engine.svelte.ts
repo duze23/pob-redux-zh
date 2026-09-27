@@ -425,10 +425,26 @@ export interface CalcSubSection {
 
 export interface CalcSection {
   index: number;
+  id: string;
   group: number | null;
   colour: string | null;
   enabled: boolean;
   subSections: CalcSubSection[];
+}
+
+export interface CalcSkillSelection {
+  group: number | null;
+  groups: { index: number; label: string }[];
+  activeSkill: number | null;
+  activeSkills: { index: number; label: string }[];
+  hasMinion: boolean;
+}
+
+export interface CalcEffect {
+  name: string;
+  artName: string;
+  kind: "buff" | "debuff";
+  count: number | null;
 }
 
 export interface Sidebar {
@@ -1510,6 +1526,8 @@ export const engine = {
   getSidebar: () => call<Sidebar>("get_sidebar"),
   sidebarBreakdown: (rowIndex: number) => call<{ sections: BreakdownSection[]; rev: number }>("sidebar_breakdown", { rowIndex }),
   calcSections: (actor?: "player" | "minion") => call<{ sections: CalcSection[]; rev: number }>("calc_sections", { actor }),
+  calcEffects: (actor?: "player" | "minion") => call<{ effects: CalcEffect[]; rev: number }>("calc_effects", { actor }),
+  calcSkill: (patch?: { group?: number; activeSkill?: number }) => call<CalcSkillSelection>("calc_skill", patch ?? {}),
   calcCellBreakdown: (ref: { section: number; sub: number; row: number; col: number; actor?: string }) =>
     call<{ sections: BreakdownSection[]; rev: number }>("calc_cell_breakdown", ref),
   configVisibility: () => call<{ visibility: Record<string, boolean>; rev: number }>("config_visibility"),

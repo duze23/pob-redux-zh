@@ -10,11 +10,15 @@ export interface ArtMap {
   bases: Record<string, string>;
   uniques: Record<string, string>;
   sockets: Record<string, string>;
+  skills?: Record<string, string>;
+  buffs?: Record<string, string>;
+  buffNames?: Record<string, string>;
+  buffVisuals?: Record<string, string>;
   files: Record<string, string>;
 }
 
-const lookup = (table: Record<string, string>, name: string | null | undefined) =>
-  name && Object.hasOwn(table, name) ? table[name] : undefined;
+const lookup = (table: Record<string, string> | null | undefined, name: string | null | undefined) =>
+  name && table && Object.hasOwn(table, name) ? table[name] : undefined;
 
 export function artPath(map: ArtMap, item: ArtItem, supportGem = false): string | null {
   // PoB drops "Support" from PoE1 support gem names; some of them also name an active gem.
@@ -103,4 +107,21 @@ export async function socketArtUrls(game: Game): Promise<Record<string, string>>
       return url ? [[key, url]] : [];
     }),
   );
+}
+
+/** Resolve status art by name, stable id, then HUD skill art. */
+export async function statusEffectArtUrls(game: Game, names: string[]): Promise<Record<string, string>> {
+  const map = await artMap(game);
+  if (!map) return {};
+  const urls: [string, string][] = [];
+  for (const name of names) {
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const path = lookup(map.buffNames, name)
+      ?? lookup(map.buffs, id)
+      ?? lookup(map.buffVisuals, id)
+      ?? lookup(map.skills, name);
+    const url = path && artUrl(map, path);
+    if (url) urls.push([name, url]);
+  }
+  return Object.fromEntries(urls);
 }

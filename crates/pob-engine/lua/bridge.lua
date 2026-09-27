@@ -36,9 +36,7 @@ local function frame()
 	runCallback("OnFrame")
 end
 
--- PoB's Calcs tab keeps its own copy of every skill selection (`input.skill_number`
--- and the `...Calcs` fields) and the CALCS pass reads only those. The app has no
--- separate Calcs selector, so the copies follow the main selections.
+-- Calcs owns socket and active selection; unsupported detail selectors follow the main skill.
 local CALCS_TWINS = {
 	skillPart = "skillPartCalcs",
 	skillStageCount = "skillStageCountCalcs",
@@ -53,8 +51,7 @@ local CALCS_TWINS = {
 local function syncCalcsSelection()
 	if not build or not build.calcsTab or not build.skillsTab then return false end
 	local changed = false
-	-- PoB reloads the table-valued twins in another shape, so only a stat set
-	-- choice that is not the default counts as a change for them.
+	-- Only non-default table-valued stat sets count as changed after PoB reloads them.
 	local function set(t, key, value)
 		if t[key] == value then return end
 		if type(value) == "table" then
@@ -68,9 +65,7 @@ local function syncCalcsSelection()
 		end
 		t[key] = value
 	end
-	set(build.calcsTab.input, "skill_number", build.mainSocketGroup or 1)
 	for _, group in ipairs(build.skillsTab.socketGroupList or {}) do
-		set(group, "mainActiveSkillCalcs", group.mainActiveSkill or 1)
 		for _, gem in ipairs(group.gemList or {}) do
 			for main, twin in pairs(CALCS_TWINS) do set(gem, twin, gem[main]) end
 		end
@@ -674,13 +669,27 @@ end
 -- Build lifecycle
 -- ---------------------------------------------------------------------------
 
--- A file saved by PoB carries its own Calcs selections; one more pass brings
--- them in line before anything reads the CALCS output.
+-- A loaded build starts Calcs on its main skill.
 local function loaded()
 	main.__reduxBuildGeneration = main.__reduxBuildGeneration + 1
 	build = main.modes["BUILD"]
 	ensureBuild()
-	if syncCalcsSelection() then refresh() end
+	local changed = false
+	local input = build.calcsTab.input
+	local skillNumber = build.mainSocketGroup or 1
+	if input.skill_number ~= skillNumber then
+		input.skill_number = skillNumber
+		changed = true
+	end
+	for _, group in ipairs(build.skillsTab.socketGroupList or {}) do
+		local activeSkill = group.mainActiveSkill or 1
+		if group.mainActiveSkillCalcs ~= activeSkill then
+			group.mainActiveSkillCalcs = activeSkill
+			changed = true
+		end
+	end
+	if syncCalcsSelection() then changed = true end
+	if changed then refresh() end
 	return M.get_build()
 end
 
@@ -1073,46 +1082,147 @@ M.calc_mode = function(p)
 	return { mode = input.misc_buffMode or "EFFECTIVE", modes = array({ "UNBUFFED", "BUFFED", "COMBAT", "EFFECTIVE" }) }
 end
 
-local BUFF_LABELS = { UNBUFFED = "Unbuffed", BUFFED = "Buffed", COMBAT = "In combat", EFFECTIVE = "Effective DPS" }
-
--- The View Skill Details rows are PoB's selectors; each becomes the value the
--- CALCS pass used. Nil drops the row (checkboxes and library buttons).
-local function controlText(name, env)
-	local skill = env.player and env.player.mainSkill
-	local ae = skill and skill.activeEffect
-	local ge = ae and ae.grantedEffect
-	if name == "mainSocketGroup" then
-		local n = build.calcsTab.input.skill_number or 1
-		local group = build.skillsTab.socketGroupList[n]
-		if not group then return nil end
-		local label = group.displayLabel or group.label
-		if not label or label == "" then label = "Group " .. n end
-		local ok, ws = pcall(build.skillsTab.GetSocketGroupWeaponSetLabel, build.skillsTab, group)
-		if ok and type(ws) == "string" and ws ~= "" and ws ~= "Both" then label = label .. " (" .. ws .. ")" end
-		return label
-	elseif name == "mainSkill" then
-		local ok, nm = pcall(build.calcsTab.calcs.getActiveSkillDisplayName, skill)
-		return (ok and nm) or (ge and ge.name)
-	elseif name == "statSet" then
-		local sets = ge and ge.statSets
-		if not sets or #sets < 2 then return nil end
-		local idx = (ae.statSetCalcs and ae.statSetCalcs.index) or (ae.statSet and ae.statSet.index) or 1
-		return sets[idx] and tostring(sets[idx].label) or nil
-	elseif name == "mainSkillPart" then
-		return skill and skill.skillPartName
-	elseif name == "mainSkillStageCount" then
-		return skill and skill.activeStageCount and tostring(skill.activeStageCount)
-	elseif name == "mainSkillMineCount" then
-		return skill and skill.activeMineCount and tostring(skill.activeMineCount)
-	elseif name == "mainSkillMinion" then
-		return env.minion and env.minion.minionData and env.minion.minionData.name
-	elseif name == "mainSkillMinionSkill" then
-		local ms = env.minion and env.minion.mainSkill
-		return ms and ms.activeEffect and ms.activeEffect.grantedEffect and ms.activeEffect.grantedEffect.name
-	elseif name == "mode" then
-		return BUFF_LABELS[build.calcsTab.input.misc_buffMode or "EFFECTIVE"]
+M.calc_skill = function(p)
+	ensureBuild()
+	local function state()
+		local input = build.calcsTab.input
+		local list = build.skillsTab.socketGroupList or {}
+		local groups = array({})
+		for i, group in ipairs(list) do
+			local label = group.displayLabel or group.label
+			if not label or label == "" then label = "Group " .. i end
+			groups[#groups + 1] = { index = i, label = label }
+		end
+		local groupIndex = tonumber(input.skill_number) or 1
+		local group = list[groupIndex]
+		if not group and list[1] then
+			groupIndex = 1
+			group = list[1]
+			input.skill_number = 1
+		end
+		local skills = array({})
+		local display = (group and group.displaySkillListCalcs) or {}
+		for i, skill in ipairs(display) do
+			local ae = skill.activeEffect
+			local src = ae and ae.srcInstance
+			local explodeSource = src and src.explodeSource
+			local explodeName = explodeSource and (explodeSource.name or explodeSource.dn)
+			local label
+			if explodeName then
+				label = "From " .. (colorCodes[explodeSource.rarity or "NORMAL"] or "") .. explodeName
+			else
+				local ok, name = pcall(build.calcsTab.calcs.getActiveSkillDisplayName, skill)
+				label = (ok and name) or (ae and ae.grantedEffect and ae.grantedEffect.name) or ("Skill " .. i)
+			end
+			skills[#skills + 1] = { index = i, label = label }
+		end
+		local active = group and tonumber(group.mainActiveSkillCalcs) or nil
+		if #skills > 0 and (not active or not display[active]) then
+			active = 1
+			group.mainActiveSkillCalcs = 1
+		end
+		local env = build.calcsTab.calcsEnv or build.calcsTab.mainEnv
+		return {
+			group = group and groupIndex or null,
+			groups = groups,
+			activeSkill = active or null,
+			activeSkills = skills,
+			hasMinion = env and env.minion ~= nil or false,
+		}
 	end
-	return nil
+
+	local changed = false
+	local list = build.skillsTab.socketGroupList or {}
+	if p and p.group ~= nil then
+		local index = tonumber(p.group)
+		if not index or index % 1 ~= 0 or not list[index] then error("unknown socket group " .. tostring(p.group), 0) end
+		if build.calcsTab.input.skill_number ~= index then
+			build.calcsTab.input.skill_number = index
+			changed = true
+		end
+	end
+	if p and p.activeSkill ~= nil then
+		local groupIndex = tonumber(build.calcsTab.input.skill_number) or 1
+		local group = list[groupIndex]
+		local index = tonumber(p.activeSkill)
+		local display = group and group.displaySkillListCalcs or {}
+		if not index or index % 1 ~= 0 or not display[index] then error("unknown active skill " .. tostring(p.activeSkill), 0) end
+		if group.mainActiveSkillCalcs ~= index then
+			group.mainActiveSkillCalcs = index
+			changed = true
+		end
+	end
+	if changed then
+		build.calcsTab:AddUndoState()
+		refresh()
+	end
+	return state()
+end
+
+local EFFECT_ART_NAMES = {
+	["Power Charges"] = "Power Charge",
+	["Absorption Charges"] = "Absorption Charge",
+	["Frenzy Charges"] = "Frenzy Charge",
+	["Affliction Charges"] = "Affliction Charge",
+	["Endurance Charges"] = "Endurance Charge",
+	["Brutal Charges"] = "Brutal Charge",
+	["Brine Charges"] = "Brine Charge",
+	["Siphoning Charges"] = "Siphoning Charge",
+	["Challenger Charges"] = "Challenger Charge",
+	["Blitz Charges"] = "Blitz Charge",
+	["Inspiration Charges"] = "Inspiration Charge",
+	["Blood Charges"] = "Blood Charge",
+	["Spirit Charges"] = "Spirit Charge",
+	["Spirit Infusions"] = "Spirit Infusion",
+	["Ghost Shrouds"] = "Ghost Shroud",
+	["Crab Barriers"] = "Crab Barrier",
+	["ArmourBreak"] = "Armour Break",
+}
+
+-- PoB filters these status effects for the selected buff mode and actor.
+M.calc_effects = function(p)
+	ensureBuild()
+	local env = build.calcsTab.calcsEnv or build.calcsTab.mainEnv
+	local actor = (p and p.actor == "minion" and env.minion) or env.player
+	local output = actor and actor.output or {}
+	local effects = array({})
+	local seen = {}
+	local function add(name, kind, count)
+		if not name or name == "" then return end
+		local label = tostring(name):gsub(":%s*{%d+}", "")
+		label = label:gsub("(%l)(%u)", "%1 %2")
+		local previous = seen[label]
+		if previous then
+			if count and (previous.count == null or count > previous.count) then previous.count = count end
+			return
+		end
+		local effect = {
+			name = label,
+			artName = EFFECT_ART_NAMES[name] or label,
+			kind = kind,
+			count = count or null,
+		}
+		seen[label] = effect
+		effects[#effects + 1] = effect
+	end
+	local function addList(value, kind)
+		for text in tostring(value or ""):gmatch("[^,]+") do
+			text = text:gsub("^%s+", ""):gsub("%s+$", "")
+			local name, stacks = text:match("^(.-)%s+%((%d+)%s+stacks?%)$")
+			if name then
+				add(name, kind, tonumber(stacks))
+			else
+				local count, countedName = text:match("^(%d+)%s+(.+)$")
+				add(countedName or text, kind, tonumber(count))
+			end
+		end
+	end
+	addList(output.BuffList, "buff")
+	addList(output.CombatList, "buff")
+	addList(output.CurseList, "debuff")
+	local rage = tonumber(output.Rage)
+	if rage and rage > 0 then add("Rage", "buff", math.floor(rage)) end
+	return { effects = effects, rev = build.outputRevision }
 end
 
 M.calc_sections = function(p)
@@ -1122,7 +1232,7 @@ M.calc_sections = function(p)
 	local actor = (p and p.actor == "minion" and env.minion) or env.player
 	local out = array({})
 	for sIndex, section in ipairs(calcsTab.sectionList) do
-		if section.subSection then
+		if section.subSection and section.id ~= "SkillSelect" then
 			local enabled = calcsTab:CheckFlag(section, actor, env.player)
 			local colour = section.colour
 			local hex = null
@@ -1133,6 +1243,7 @@ M.calc_sections = function(p)
 			end
 			local secOut = {
 				index = sIndex,
+				id = section.id,
 				group = opt(section.group),
 				colour = hex,
 				enabled = enabled and true or false,
@@ -1153,10 +1264,7 @@ M.calc_sections = function(p)
 							local keep = true
 							for ci, colData in ipairs(rowData) do
 								local text = ""
-								if colData.control then
-									local ok, value = pcall(controlText, colData.controlName, env)
-									if ok and value then text = tostring(value) else keep = false end
-								elseif colData.format then
+								if colData.format then
 									local okF, formatted = pcall(formatCalcStr, section, colData.format, actor, colData)
 									text = okF and formatted or "?"
 								end
@@ -1178,8 +1286,7 @@ M.calc_sections = function(p)
 	return { sections = out, rev = build.outputRevision }
 end
 
--- Breakdown for one Calcs-grid cell (the cell's entry list drives
--- CalcBreakdownControl exactly as clicking it does in PoB).
+-- A Calcs-grid cell uses the same breakdown entries as PoB's click control.
 M.calc_cell_breakdown = function(p)
 	ensureBuild()
 	local section = build.calcsTab.sectionList[tonumber(p and p.section) or -1]
@@ -3170,6 +3277,17 @@ M.move_socket_group = function(p)
 		build.mainSocketGroup = m - 1
 	elseif from > m and to <= m then
 		build.mainSocketGroup = m + 1
+	end
+	local calcsInput = build.calcsTab and build.calcsTab.input
+	if calcsInput then
+		local c = calcsInput.skill_number or 1
+		if c == from then
+			calcsInput.skill_number = to
+		elseif from < c and to >= c then
+			calcsInput.skill_number = c - 1
+		elseif from > c and to <= c then
+			calcsInput.skill_number = c + 1
+		end
 	end
 	build.skillsTab:AddUndoState()
 	refresh()
