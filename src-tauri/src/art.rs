@@ -1,13 +1,13 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
-use tauri::http::{header, Request, Response, StatusCode};
+use tauri::http::{header, HeaderValue, Request, Response, StatusCode};
 use tauri::{Manager, UriSchemeContext, UriSchemeResponder, Wry};
 
 const ART_BASE: &str = "https://art.pobredux.com";
-const MAP_MAX_AGE: Duration = Duration::from_secs(6 * 60 * 60);
+const MAP_REVALIDATE_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -47,28 +47,44 @@ async fn download(segments: &[&str], version: Option<&str>) -> Option<Vec<u8>> {
     res.bytes().await.ok().map(|b| b.to_vec())
 }
 
-fn write_atomic(path: &Path, bytes: &[u8]) {
+fn write_atomic(path: &Path, bytes: &[u8]) -> bool {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     let tmp = path.with_extension(format!("tmp{}", NEXT.fetch_add(1, Ordering::Relaxed)));
-    if std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, path).is_err() {
-        let _ = std::fs::remove_file(&tmp);
+    if std::fs::write(&tmp, bytes).is_ok() && std::fs::rename(&tmp, path).is_ok() {
+        return true;
     }
+    let _ = std::fs::remove_file(&tmp);
+    false
 }
 
 async fn map(cache: &Path, game: &str) -> Response<Vec<u8>> {
     let file = cache.join("maps").join(format!("{game}.json"));
-    let fresh = std::fs::metadata(&file)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < MAP_MAX_AGE);
-    if !fresh {
-        if let Some(bytes) = download(&["maps", game, "latest.json"], None).await {
-            if serde_json::from_slice::<serde_json::Value>(&bytes).is_ok() {
-                write_atomic(&file, &bytes);
+    let etag_file = file.with_extension("etag");
+    let mut req = client().get(format!("{ART_BASE}/maps/{game}/latest.json"));
+    if file.is_file() {
+        req = req.timeout(MAP_REVALIDATE_TIMEOUT);
+        let etag = std::fs::read_to_string(&etag_file).ok();
+        if let Some(value) = etag.and_then(|e| HeaderValue::from_str(e.trim()).ok()) {
+            req = req.header(header::IF_NONE_MATCH, value);
+        }
+    }
+    if let Ok(res) = req.send().await {
+        if res.status().is_success() {
+            let etag = res.headers().get(header::ETAG).cloned();
+            if let Ok(bytes) = res.bytes().await {
+                if serde_json::from_slice::<serde_json::Value>(&bytes).is_ok() && write_atomic(&file, &bytes) {
+                    match etag {
+                        Some(etag) => {
+                            write_atomic(&etag_file, etag.as_bytes());
+                        }
+                        None => {
+                            let _ = std::fs::remove_file(&etag_file);
+                        }
+                    }
+                }
             }
         }
     }
