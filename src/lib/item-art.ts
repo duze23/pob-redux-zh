@@ -132,17 +132,44 @@ export async function socketArtUrls(game: Game): Promise<Record<string, string>>
   );
 }
 
-/** Resolve status art by name, stable id, then HUD skill art. */
+const looseKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+const looseIndexes = new WeakMap<ArtMap, Record<string, string>>();
+
+function looseIndex(map: ArtMap) {
+  let index = looseIndexes.get(map);
+  if (!index) {
+    index = {};
+    for (const table of [map.buffNames, map.skills]) {
+      for (const [name, path] of Object.entries(table ?? {})) index[looseKey(name)] ??= path;
+    }
+    looseIndexes.set(map, index);
+  }
+  return index;
+}
+
+/** Resolve status art by name, stable id, then HUD skill art, then looser spellings of the name. */
+export function statusArtPath(map: ArtMap, name: string): string | undefined {
+  // PoB prefixes some buffs, as in "Totem Wrath", "Load Explosive Shot" and "Lesser Brutal Shrine".
+  const base = name.replace(/^(?:Totem|Load|Lesser)\s+/, "");
+  const names = [...new Set([name, base, base.endsWith("s") ? base.slice(0, -1) : `${base}s`])];
+  for (const candidate of names) {
+    const id = candidate.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    const path = lookup(map.buffNames, candidate)
+      ?? lookup(map.buffs, id)
+      ?? lookup(map.buffVisuals, id)
+      ?? lookup(map.skills, candidate)
+      ?? lookup(looseIndex(map), looseKey(candidate));
+    if (path) return path;
+  }
+  return undefined;
+}
+
 export async function statusEffectArtUrls(game: Game, names: string[]): Promise<Record<string, string>> {
   const map = await artMap(game);
   if (!map) return {};
   const urls: [string, string][] = [];
   for (const name of names) {
-    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-    const path = lookup(map.buffNames, name)
-      ?? lookup(map.buffs, id)
-      ?? lookup(map.buffVisuals, id)
-      ?? lookup(map.skills, name);
+    const path = statusArtPath(map, name);
     const url = path && artUrl(map, path);
     if (url) urls.push([name, url]);
   }
