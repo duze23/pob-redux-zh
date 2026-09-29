@@ -24,6 +24,7 @@
   import PobTooltip from "$lib/components/PobTooltip.svelte";
   import TraderWindow from "$lib/components/TraderWindow.svelte";
   import BuySimilarDialog from "$lib/components/BuySimilarDialog.svelte";
+  import Icon from "$lib/components/Icon.svelte";
   import { m } from "$lib/paraglide/messages";
   import { confirm } from "$lib/state/confirm.svelte";
 
@@ -593,6 +594,15 @@
         <option value={it.id}>{it.name}</option>
       {/each}
     </select>
+    <button
+      class="btn sm ghost find"
+      disabled={s.itemId === 0}
+      onclick={() => (buySimilarFor = s.itemId)}
+      title={m.items_buy_similar_title()}
+      aria-label={m.items_buy_similar()}
+    >
+      <Icon name="magnifying-glass" size={14} />
+    </button>
   </div>
 {/snippet}
 
@@ -999,7 +1009,7 @@
   }
   .slot {
     display: grid;
-    grid-template-columns: 104px 1fr;
+    grid-template-columns: 104px 1fr auto;
     align-items: center;
     gap: 8px;
     padding: 3px 10px;
@@ -1008,6 +1018,16 @@
   .slot .select {
     height: 24px;
     font-size: var(--fs-xs);
+  }
+  .find {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    justify-content: center;
+    color: var(--fg-2);
+  }
+  .find:disabled {
+    visibility: hidden;
   }
   .slot.jewel .sname {
     color: var(--fg-3);
