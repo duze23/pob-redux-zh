@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { tradeWindow } from "$lib/state/trade.svelte";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { engine, type BuySimilarInfo, type BuySimilarTarget } from "$lib/engine.svelte";
   import { game } from "$lib/state/game.svelte";
@@ -87,7 +87,7 @@
         localStorage.setItem(prefsKey(), JSON.stringify({ realm, league, listed }));
       } catch {}
       await writeText(url).catch(() => {});
-      await openUrl(url);
+      await tradeWindow.open(url);
       note = m.buy_opened();
     } catch (e) {
       error = friendly(e);

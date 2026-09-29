@@ -16,6 +16,7 @@ mod ninja;
 mod links;
 mod diagnostics;
 mod game;
+mod trade;
 mod voice;
 
 use std::sync::Arc;
@@ -1328,10 +1329,16 @@ pub fn run() {
             voice::voice_start,
             voice::voice_stop,
             voice::voice_cancel,
+            trade::trade_window_open,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
+            if let tauri::RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event {
+                if label == "main" {
+                    trade::close(app);
+                }
+            }
             if let tauri::RunEvent::Exit = event {
                 app.state::<agent::AgentState>().shutdown();
                 if let Some(marker) = session_marker(app) {

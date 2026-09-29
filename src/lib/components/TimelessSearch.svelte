@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { tradeWindow } from "$lib/state/trade.svelte";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import {
     engine,
@@ -143,7 +143,7 @@
     if (!tradeSeeds.length) return;
     try {
       const r = await engine.timelessTradeUrl({ jewelType, seeds: tradeSeeds, conqueror, league });
-      await openUrl(r.url);
+      await tradeWindow.open(r.url);
       note = m.timeless_trade_opened({ count: r.seeds });
     } catch (e) {
       build.error = String(e);

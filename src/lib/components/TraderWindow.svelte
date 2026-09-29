@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { tradeWindow } from "$lib/state/trade.svelte";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { engine, type PowerStat, type SlotInfo } from "$lib/engine.svelte";
   import { build } from "$lib/state/build.svelte";
@@ -298,7 +298,7 @@
             {:else if r.url}
               <input class="input sm grow mono" readonly value={r.url} onfocus={(e) => (e.target as HTMLInputElement).select()} />
               <button class="btn sm ghost" onclick={() => copy(r.url!)}>{m.common_copy_button()}</button>
-              <button class="btn sm" onclick={() => openUrl(r.url!)}>{m.common_open()}</button>
+              <button class="btn sm" onclick={() => tradeWindow.open(r.url!)}>{m.common_open()}</button>
             {:else}
               <span class="grow"></span>
             {/if}

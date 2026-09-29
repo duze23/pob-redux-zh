@@ -11,6 +11,7 @@
   import { locale, LOCALES, LOCALE_LABEL, type LocalePreference } from "$lib/state/locale.svelte";
   import { decider } from "$lib/state/decide.svelte";
   import { voice } from "$lib/state/voice.svelte";
+  import { tradeWindow } from "$lib/state/trade.svelte";
   import { chat } from "$lib/state/chat.svelte";
   import AssistantSettings from "$lib/components/AssistantSettings.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -479,6 +480,16 @@
           {/if}
         </div>
         <p class="note">{m.voice_privacy()}</p>
+        <h2 class="label ghead">{m.tradewin_title()}</h2>
+        <div class="rows">
+          <label class="opt">
+            <span>
+              {m.tradewin_enable()}
+              <span class="hint">{m.tradewin_enable_hint()}</span>
+            </span>
+            <input class="switch" type="checkbox" role="switch" checked={tradeWindow.inApp} onchange={(e) => tradeWindow.setInApp((e.target as HTMLInputElement).checked)} />
+          </label>
+        </div>
       {:else if active === "updates"}
         {@render head(m.settings_updates(), m.settings_updates_desc(), version)}
         <div class="rows">
