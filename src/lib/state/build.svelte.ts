@@ -192,11 +192,23 @@ class BuildStore {
     this.noticeTimer = setTimeout(() => (this.notice = null), 4_000);
   }
 
+  private savedHooks: ((path: string) => unknown)[] = [];
+
+  /** Runs after every successful save of the build file. */
+  onSaved(fn: (path: string) => unknown) {
+    this.savedHooks.push(fn);
+  }
+
+  private saved(path: string) {
+    this.say(m.build_saved({ path }));
+    for (const fn of this.savedHooks) void fn(path);
+  }
+
   async save() {
     if (!this.info) return undefined;
     if (!this.info.file) return this.saveAs();
     const r = await this.run(() => engine.saveBuildFile(), { user: false });
-    if (r) this.say(m.build_saved({ path: r.path }));
+    if (r) this.saved(r.path);
     return r;
   }
 
@@ -216,7 +228,7 @@ class BuildStore {
     if (!picked) return undefined;
     const path = /\.xml$/i.test(picked) ? picked : `${picked}.xml`;
     const r = await this.run(() => engine.saveBuildFile(path), { user: false });
-    if (r) this.say(m.build_saved({ path: r.path }));
+    if (r) this.saved(r.path);
     return r;
   }
 

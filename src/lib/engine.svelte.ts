@@ -121,6 +121,17 @@ export function readTextFile(path: string): Promise<string> {
   return invoke<string>("read_text_file", { path });
 }
 
+/** current: the open loadout; each: one file per loadout; levelling: one file with level ranges. */
+export type PlannerMode = "current" | "each" | "levelling";
+
+export interface GameBuildExport {
+  name: string;
+  json: string;
+  passives: number;
+  skills: number;
+  gear: number;
+}
+
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke<void>("write_text_file", { path, contents });
 }
@@ -1698,8 +1709,8 @@ export const engine = {
   /** PoE1 only. */
   importCharacter: (p: { character: GameCharacter; passives: string; items: string; name?: string }) =>
     call<BuildInfo>("import_character", p),
-  exportGameBuild: (meta?: { author?: string; link?: string; description?: string }) =>
-    call<{ json: string; name: string; passives: number; skills: number; gear: number }>("export_game_build", meta ?? {}),
+  exportGameBuild: (p?: { mode?: PlannerMode; author?: string; link?: string; description?: string }) =>
+    call<{ files: GameBuildExport[] }>("export_game_build", p ?? {}),
   getParty: () => call<PartyState>("get_party"),
   setPartyText: (kind: PartyKind, text: string) => call<PartyState>("set_party_text", { kind, text }),
   partyImport: (p: { code?: string; xml?: string; append?: boolean; only?: string }) => call<PartyState>("party_import", p),

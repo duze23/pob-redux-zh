@@ -6330,59 +6330,26 @@ M.import_game_build = function(p)
 	}
 end
 
--- Export the current build as a Build Planner *.build JSON. Only slot ids the
--- game's format is known to accept are emitted for gear hints.
--- Files the game writes carry the ascendancy as its internal id
--- ("Warrior1"); the importer accepts either, so write what the game does.
--- params: { author, link, description } (optional strings)
+-- Export the build as Build Planner *.build JSON. mode "current" writes the
+-- active loadout, "each" one file per loadout, and "levelling" one file whose
+-- entries carry level ranges from each loadout's passive points. Files the
+-- game writes carry the ascendancy as its internal id ("Warrior1"); the
+-- importer accepts either, so write what the game does.
+-- params: { mode, author, link, description } (all optional)
 M.export_game_build = function(p)
 	ensureBuild()
-	local out = { name = build.buildName or "PoB Redux build" }
+	p = p or {}
+	local mode = p.mode or "current"
+	if mode ~= "current" and mode ~= "each" and mode ~= "levelling" then error("mode must be current, each or levelling", 0) end
 	local function text(v)
 		if type(v) == "string" and v:match("%S") then return (v:gsub("^%s+", ""):gsub("%s+$", "")) end
 		return nil
 	end
-	out.author = text(p and p.author)
-	out.link = text(p and p.link)
-	out.description = text(p and p.description)
-	local asc = build.spec.curAscendClass
-	if (build.spec.curAscendClassId or 0) > 0 and asc and asc.name ~= "None" then
-		out.ascendancy = asc.internalId or asc.name
-	end
-	local passives = {}
-	for _, node in pairs(build.spec.allocNodes) do
-		if node.stringId and node.type ~= "ClassStart" and node.type ~= "AscendClassStart" then
-			local entry = { id = node.stringId }
-			if node.allocMode and node.allocMode > 0 then entry.weapon_set = node.allocMode end
-			passives[#passives + 1] = entry
-		end
-	end
-	table.sort(passives, function(a, b) return a.id < b.id end)
-	out.passives = passives
-	local skills = {}
-	for _, group in ipairs(build.skillsTab.socketGroupList) do
-		if group.enabled and not group.source then
-			local actives, supports = {}, {}
-			for _, gem in ipairs(group.gemList) do
-				local gd = gem.gemData
-				if gem.enabled and gd and (gd.gameId or gd.id) then
-					local gid = gd.gameId or gd.id
-					if gd.gemType == "Support" or (gd.grantedEffect and gd.grantedEffect.support) then
-						supports[#supports + 1] = { id = gid }
-					else
-						actives[#actives + 1] = { id = gid }
-					end
-				end
-			end
-			for _, a in ipairs(actives) do
-				if #supports > 0 then a.support_skills = supports end
-				skills[#skills + 1] = a
-			end
-		end
-	end
-	out.skills = skills
 	local invMap = {
 		["Weapon 1"] = "Weapon1",
+		["Weapon 2"] = "Offhand1",
+		["Weapon 1 Swap"] = "Weapon2",
+		["Weapon 2 Swap"] = "Offhand2",
 		["Helmet"] = "Helm1",
 		["Body Armour"] = "BodyArmour1",
 		["Gloves"] = "Gloves1",
@@ -6392,38 +6359,205 @@ M.export_game_build = function(p)
 		["Ring 1"] = "Ring1",
 		["Ring 2"] = "Ring2",
 	}
-	local inventory = {}
-	for slotName, slot in pairs(build.itemsTab.slots) do
-		local item = slot.selItemId and slot.selItemId ~= 0 and build.itemsTab.items[slot.selItemId]
-		if item and not slot.nodeId then
-			local invId, sx = invMap[slotName], 0
-			local flaskNum = slotName:match("^Flask (%d)")
-			if not invId and flaskNum then
-				invId = "Flask1"
-				sx = tonumber(flaskNum) - 1
+	local function snapshot()
+		local spec = build.spec
+		local snap = { passives = {}, skills = {}, gear = {} }
+		local asc = spec.curAscendClass
+		if (spec.curAscendClassId or 0) > 0 and asc and asc.name ~= "None" then
+			snap.ascendancy = asc.internalId or asc.name
+		end
+		for id, node in pairs(spec.allocNodes) do
+			-- a chosen attribute replaces the allocated node; the tree node keeps the game's id
+			local base = spec.tree.nodes[id] or node
+			if base.stringId and node.type ~= "ClassStart" and node.type ~= "AscendClassStart" then
+				local entry = { id = base.stringId }
+				if node.allocMode and node.allocMode > 0 then entry.weapon_set = node.allocMode end
+				local chosen = spec.hashOverrides and spec.hashOverrides[id]
+				if chosen and chosen.isAttribute and chosen.dn then entry.additional_text = "<b>" .. chosen.dn .. "</b>" end
+				snap.passives[#snap.passives + 1] = entry
 			end
-			if invId then
+		end
+		table.sort(snap.passives, function(a, b)
+			if a.id ~= b.id then return a.id < b.id end
+			return (a.weapon_set or 0) < (b.weapon_set or 0)
+		end)
+		for _, group in ipairs(build.skillsTab.socketGroupList) do
+			if group.enabled and not group.source then
+				local actives, supports = {}, {}
+				for _, gem in ipairs(group.gemList) do
+					local gd = gem.gemData
+					local gid = gd and (gd.gameId or gd.id)
+					-- the Build Planner does not support meta gems
+					if gem.enabled and gid and not (gd.tags and gd.tags.meta) then
+						local support = gd.gemType == "Support" or (gd.grantedEffect and gd.grantedEffect.support)
+						local list = support and supports or actives
+						list[#list + 1] = { id = gid }
+					end
+				end
+				for _, a in ipairs(actives) do
+					if #supports > 0 then a.support_skills = supports end
+					snap.skills[#snap.skills + 1] = a
+				end
+			end
+		end
+		for slotName, slot in pairs(build.itemsTab.slots) do
+			local item = slot.selItemId and slot.selItemId ~= 0 and build.itemsTab.items[slot.selItemId]
+			local invId, sx = invMap[slotName], 0
+			local flask, charm = slotName:match("^Flask (%d)$"), slotName:match("^Charm (%d)$")
+			if flask then invId, sx = "Flask1", tonumber(flask) - 1 end
+			if charm then invId, sx = "Charm1", tonumber(charm) - 1 end
+			if item and invId and not slot.nodeId then
 				local entry = { inventory_id = invId, slot_x = sx, slot_y = 0 }
 				if item.rarity == "UNIQUE" or item.rarity == "RELIC" then
 					entry.unique_name = item.title or item.name
 					entry.additional_text = item.baseName
 				else
-					local lines = { item.baseName or item.name }
-					for i, mod in ipairs(item.explicitModLines or {}) do
-						lines[#lines + 1] = i .. ". " .. mod.line:gsub("^{.-}", "")
+					local lines = { "<b>" .. (item.baseName or item.name) .. "</b>" }
+					for _, modLine in ipairs(item.explicitModLines or {}) do
+						local line = not modLine.disabled and itemLib.formatModLine(modLine, false, true)
+						if line then lines[#lines + 1] = (line:gsub("%^x%x%x%x%x%x%x", ""):gsub("%^%d", "")) end
 					end
 					entry.additional_text = table.concat(lines, "\n")
 				end
-				inventory[#inventory + 1] = entry
+				snap.gear[#snap.gear + 1] = entry
 			end
 		end
+		table.sort(snap.gear, function(a, b)
+			if a.inventory_id ~= b.inventory_id then return a.inventory_id < b.inventory_id end
+			return a.slot_x < b.slot_x
+		end)
+		local used, _, _, _, ws1, ws2 = spec:CountAllocNodes()
+		snap.points = (used or 0) - math.min(ws1 or 0, ws2 or 0)
+		snap.extra = build.calcsTab.mainOutput and build.calcsTab.mainOutput.ExtraPoints or 0
+		return snap
 	end
-	table.sort(inventory, function(a, b)
-		if a.inventory_id ~= b.inventory_id then return a.inventory_id < b.inventory_id end
-		return (a.slot_x or 0) < (b.slot_x or 0)
+	local function file(name, snap)
+		return {
+			name = name,
+			author = text(p.author),
+			link = text(p.link),
+			description = text(p.description),
+			ascendancy = snap.ascendancy,
+			passives = snap.passives,
+			skills = snap.skills,
+			inventory_slots = snap.gear,
+		}
+	end
+	local function result(files)
+		local out = array({})
+		for _, f in ipairs(files) do
+			out[#out + 1] = { name = f.name, json = dkjson.encode(f), passives = #f.passives, skills = #f.skills, gear = #f.inventory_slots }
+		end
+		return { files = out }
+	end
+	local buildName = build.buildName or "PoB Redux build"
+	local names = mode ~= "current" and M.get_loadouts().loadouts or {}
+	if #names < 2 then return result({ file(buildName, snapshot()) }) end
+
+	-- Visit each loadout, then put back the exact sets and unsaved state the user had.
+	local tabs = { build, build.notesTab, build.partyTab, build.configTab, build.treeTab, build.skillsTab, build.itemsTab, build.calcsTab }
+	local flags, specFlag = {}, build.spec.modFlag
+	for i, tab in ipairs(tabs) do flags[i] = tab.modFlag end
+	local was = {
+		spec = build.treeTab.activeSpec,
+		items = build.itemsTab.activeItemSetId,
+		skills = build.skillsTab.activeSkillSetId,
+		config = build.configTab.activeConfigSetId,
+	}
+	local originalSpec = build.spec
+	local stages = {}
+	local ok, err = pcall(function()
+		for _, name in ipairs(names) do
+			local loadout = build:GetLoadoutByName(name)
+			if loadout and loadout.specId then
+				build:SetActiveLoadout(loadout)
+				refresh()
+				local snap = snapshot()
+				snap.name = name:gsub("%s*{[%w,]+}", "")
+				stages[#stages + 1] = snap
+			end
+		end
 	end)
-	out.inventory_slots = inventory
-	return { json = dkjson.encode(out), name = out.name, passives = #passives, skills = #skills, gear = #inventory }
+	if build.treeTab.activeSpec ~= was.spec then build.treeTab:SetActiveSpec(was.spec, true) end
+	if build.itemsTab.activeItemSetId ~= was.items then build.itemsTab:SetActiveItemSet(was.items, true) end
+	if build.skillsTab.activeSkillSetId ~= was.skills then build.skillsTab:SetActiveSkillSet(was.skills, true) end
+	if build.configTab.activeConfigSetId ~= was.config then build.configTab:SetActiveConfigSet(was.config, false, true) end
+	build:SyncLoadouts()
+	refresh()
+	for i, tab in ipairs(tabs) do tab.modFlag = flags[i] end
+	originalSpec.modFlag = specFlag
+	frame()
+	if not ok then error(err, 0) end
+	if #stages < 2 then return result({ file(buildName, snapshot()) }) end
+
+	if mode == "each" then
+		local files = {}
+		for _, s in ipairs(stages) do files[#files + 1] = file(buildName .. " - " .. s.name, s) end
+		return result(files)
+	end
+
+	-- Levelling: the loadouts in their PoB order, each a stage from the level its
+	-- passive points need (buildMode:EstimatePlayerProgress arithmetic), kept
+	-- above the stage before, since endgame loadouts often spend the same points.
+	for i, s in ipairs(stages) do
+		local act, level = 0, 1
+		repeat
+			act = act + 1
+			level = math.min(math.max(s.points + 1 - build.acts[act].questPoints - s.extra, build.acts[act].level), 100)
+		until act == build.maxActs or level <= build.acts[act + 1].level
+		s.level = i == 1 and 1 or math.min(math.max(level, stages[i - 1].level + 1), 100)
+	end
+	local function span(first, last)
+		local nextStage = stages[last + 1]
+		return stages[first].level, nextStage and math.max(stages[last].level, nextStage.level - 1) or 100
+	end
+	-- One entry per unbroken run of stages an entry appears in.
+	local function merge(lists, keyOf, first, last, finish)
+		local order, seen, out = {}, {}, {}
+		for i = first, last do
+			for _, e in ipairs(lists(stages[i])) do
+				local k = keyOf(e)
+				if not seen[k] then
+					seen[k] = {}
+					order[#order + 1] = k
+				end
+				seen[k][i] = e
+			end
+		end
+		for _, k in ipairs(order) do
+			local at, i = seen[k], first
+			while i <= last do
+				if at[i] then
+					local j = i
+					while j < last and at[j + 1] do j = j + 1 end
+					local e = copyTable(at[j])
+					e.level_interval = { span(i, j) }
+					if finish then finish(e, i, j) end
+					out[#out + 1] = e
+					i = j + 1
+				else
+					i = i + 1
+				end
+			end
+		end
+		return out
+	end
+	local final = stages[#stages]
+	return result({ file(buildName, {
+		ascendancy = final.ascendancy,
+		passives = merge(function(s) return s.passives end, function(e) return e.id .. "|" .. (e.weapon_set or 0) end, 1, #stages),
+		skills = merge(function(s) return s.skills end, function(e) return e.id end, 1, #stages, function(e, i, j)
+			e.support_skills = nil
+			local supports = merge(function(s)
+				for _, skill in ipairs(s.skills) do
+					if skill.id == e.id then return skill.support_skills or {} end
+				end
+				return {}
+			end, function(sup) return sup.id end, i, j)
+			if #supports > 0 then e.support_skills = supports end
+		end),
+		gear = merge(function(s) return s.gear end, function(e) return e.inventory_id .. "|" .. e.slot_x .. "|" .. (e.unique_name or e.additional_text or "") end, 1, #stages),
+	}) })
 end
 
 -- Weapon set I/II, including PoB's main-skill hand-off to a group socketed in

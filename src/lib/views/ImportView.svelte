@@ -31,6 +31,7 @@
     SHARE_SITES,
     type ShareSite,
     type AppPaths,
+    type PlannerMode,
     type BuildEntry,
     type GameBuildList,
     type MobalyticsBuild,
@@ -41,6 +42,7 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { build, autosaveKey } from "$lib/state/build.svelte";
   import { app } from "$lib/state/app.svelte";
+  import { planner, AUTHOR_KEY } from "$lib/state/planner.svelte";
   import { game } from "$lib/state/game.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { m } from "$lib/paraglide/messages";
@@ -56,7 +58,6 @@
   let fetching = $state(false);
 
   // The name written as `author` into exported .build files; remembered across builds.
-  const AUTHOR_KEY = "pob-redux:author";
   let author = $state("");
   try {
     author = localStorage.getItem(AUTHOR_KEY) ?? "";
@@ -338,22 +339,53 @@
     refresh();
   }
 
+  let plannerOpen = $state(false);
+  let plannerLoadouts = $state(0);
+  let plannerMode = $state<PlannerMode>("current");
+  let plannerAuto = $state(true);
+  let plannerBusy = $state(false);
+  const plannerLink = $derived(planner.linkFor(build.info?.file));
+  const plannerModes = $derived<[PlannerMode, string, string][]>([
+    ["current", m.import_planner_mode_current(), m.import_planner_mode_current_hint()],
+    ["each", m.import_planner_mode_each(), m.import_planner_mode_each_hint()],
+    ["levelling", m.import_planner_mode_levelling(), m.import_planner_mode_levelling_hint()],
+  ]);
+
   async function saveGameBuild() {
     commitAuthor();
-    const r = await build.run(() => engine.exportGameBuild({ author }), { sync: false, user: false });
-    if (!r) return;
+    const state = await engine.getLoadouts().catch(() => null);
+    plannerLoadouts = state?.loadouts.length ?? 0;
+    plannerMode = plannerLoadouts > 1 ? (plannerLink?.mode ?? "current") : "current";
+    plannerAuto = !!build.info?.file;
+    plannerOpen = true;
+  }
+
+  async function runPlannerExport() {
+    plannerBusy = true;
     try {
-      const p = await save({
-        defaultPath: `${gameBuilds?.dir ?? ""}\\${build.info?.name ?? r.name}.build`,
-        filters: [{ name: "Game Build Planner", extensions: ["build"] }],
-      });
-      if (!p) return;
-      await writeTextFile(p, r.json);
-      say(m.import_saved_build_file({ passives: r.passives, skills: r.skills, gear: r.gear }));
-      build.say(m.import_saved_path({ path: p }));
+      const dir = gameBuilds?.dir ?? "";
+      let target: string | null;
+      if (plannerMode === "each") {
+        const picked = await open({ directory: true, defaultPath: dir || undefined, title: m.import_planner_folder_title() });
+        target = typeof picked === "string" ? picked : null;
+      } else {
+        const name = (build.info?.name ?? "build").replace(/[\\/:*?"<>|]/g, "");
+        target = await save({ defaultPath: `${dir}/${name}.build`, filters: [{ name: "Game Build Planner", extensions: ["build"] }] });
+        if (target && !/\.build$/i.test(target)) target += ".build";
+      }
+      if (!target) return;
+      const { paths, files } = await planner.write(plannerMode, target);
+      const file = build.info?.file;
+      if (file) planner.setLink(file, plannerAuto ? { mode: plannerMode, target } : null);
+      const f = files[0];
+      say(files.length > 1 ? m.import_saved_build_files({ count: files.length }) : m.import_saved_build_file({ passives: f.passives, skills: f.skills, gear: f.gear }));
+      build.say(m.import_saved_path({ path: paths.length > 1 ? target : paths[0] }));
+      plannerOpen = false;
       refresh();
     } catch (e) {
       build.error = m.import_planner_export_failed({ error: String(e) });
+    } finally {
+      plannerBusy = false;
     }
   }
 
@@ -1129,6 +1161,41 @@
       {/if}
     </div>
 
+    {#if plannerOpen}
+      <div class="overlay" role="presentation" onclick={() => !plannerBusy && (plannerOpen = false)} onkeydown={(e) => e.key === "Escape" && !plannerBusy && (plannerOpen = false)}>
+        <div class="modal" role="dialog" aria-label={m.import_planner_dialog()} tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === "Escape" && !plannerBusy && (plannerOpen = false)}>
+          <div class="mhead">
+            <span class="label">{m.import_planner_dialog()}</span>
+            <button class="btn sm ghost" onclick={() => (plannerOpen = false)} disabled={plannerBusy}>{m.common_close()}</button>
+          </div>
+          <div class="mbody">
+            {#if plannerLoadouts > 1}
+              {#each plannerModes as [id, title, hint] (id)}
+                <label class="mrow pmode">
+                  <input type="radio" name="planner-mode" value={id} bind:group={plannerMode} disabled={plannerBusy} />
+                  <span class="mtext"><span class="mtitle">{title}</span><span class="dim small">{hint}</span></span>
+                </label>
+              {/each}
+            {/if}
+            <label class="mrow pmode">
+              <input type="checkbox" bind:checked={plannerAuto} disabled={plannerBusy || !build.info?.file} />
+              <span class="mtext">
+                <span class="mtitle">{m.import_planner_auto()}</span>
+                <span class="dim small">{build.info?.file ? m.import_planner_auto_hint() : m.import_planner_auto_unsaved()}</span>
+              </span>
+            </label>
+            <div class="mrow">
+              <span class="mtext dim small">{plannerLink ? m.import_planner_linked({ target: plannerLink.target }) : ""}</span>
+              {#if plannerLink && build.info?.file}
+                <button class="btn sm ghost" onclick={() => build.info?.file && planner.setLink(build.info.file, null)} disabled={plannerBusy}>{m.import_planner_stop()}</button>
+              {/if}
+              <button class="btn primary sm" onclick={runPlannerExport} disabled={plannerBusy}>{m.import_planner_save()}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
+
     {#if moba}
       <div class="overlay" role="presentation" onclick={() => !mobaBusy && (moba = null)} onkeydown={(e) => e.key === "Escape" && (moba = null)}>
         <div class="modal" role="dialog" aria-label={m.import_moba_dialog()} tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === "Escape" && (moba = null)}>
@@ -1793,6 +1860,16 @@
   .mtext {
     flex: 1;
     min-width: 0;
+  }
+  .pmode {
+    align-items: flex-start;
+    cursor: pointer;
+  }
+  .pmode input {
+    margin: 3px 0 0;
+  }
+  .pmode .mtext > span {
+    display: block;
   }
   .mtitle {
     font-size: var(--fs-sm);
