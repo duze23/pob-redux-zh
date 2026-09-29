@@ -21,6 +21,10 @@ class AppStore {
   private booted = false;
   private bootedGame: Game | null = null;
 
+  async refreshPaths() {
+    this.paths = await appPaths().catch(() => this.paths);
+  }
+
   async boot() {
     clearTimeout(this.timer);
     this.status = null;

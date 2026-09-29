@@ -1,7 +1,8 @@
 //! The game a session works on. Each game has its own vendored Path of
 //! Building (`pob` for PoE2, `pob1` for PoE1 under the app's resources), its
-//! own builds folder under Documents, and its own engine; switching reboots
-//! the engine. The choice persists in the app's config directory.
+//! own builds folder (under Documents unless the user picks another), and its
+//! own engine; switching reboots the engine. The choices persist in the app's
+//! config directory.
 
 use std::path::PathBuf;
 
@@ -78,9 +79,36 @@ impl Game {
     }
 }
 
+/// Builds folders the user chose in place of the default under Documents.
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct BuildsDirs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poe1: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poe2: Option<PathBuf>,
+}
+
+impl BuildsDirs {
+    pub fn get(&self, game: Game) -> Option<&PathBuf> {
+        match game {
+            Game::Poe1 => self.poe1.as_ref(),
+            Game::Poe2 => self.poe2.as_ref(),
+        }
+    }
+
+    pub fn set(&mut self, game: Game, dir: Option<PathBuf>) {
+        match game {
+            Game::Poe1 => self.poe1 = dir,
+            Game::Poe2 => self.poe2 = dir,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Settings {
     pub game: Option<Game>,
+    #[serde(default)]
+    pub builds_dirs: BuildsDirs,
 }
 
 fn settings_path(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -113,5 +141,17 @@ mod tests {
         assert_eq!(Game::of_build_xml("<!-- x -->\n<PathOfBuilding>"), Some(Game::Poe1));
         assert_eq!(Game::of_build_xml("<Build>"), None);
         assert_eq!(Game::of_build_xml("no xml"), None);
+    }
+
+    #[test]
+    fn settings_keep_each_games_builds_folder() {
+        let old: Settings = serde_json::from_str(r#"{"game":"poe2"}"#).unwrap();
+        assert!(old.builds_dirs.get(Game::Poe2).is_none());
+        let mut s = old;
+        s.builds_dirs.set(Game::Poe1, Some(PathBuf::from("D:/PoB1")));
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.builds_dirs.get(Game::Poe1), Some(&PathBuf::from("D:/PoB1")));
+        assert!(back.builds_dirs.get(Game::Poe2).is_none());
+        assert_eq!(back.game, Some(Game::Poe2));
     }
 }

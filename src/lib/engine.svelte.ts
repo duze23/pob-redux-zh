@@ -61,6 +61,7 @@ export interface AppPaths {
   pob_root: string;
   user_dir: string;
   builds_dir: string;
+  default_builds_dir: string;
   sync: {
     upstream_commit: string;
     upstream_commit_date: string;
@@ -105,6 +106,11 @@ export interface BuildEntry {
 
 export function listBuilds(): Promise<BuildEntry[]> {
   return invoke<BuildEntry[]>("list_builds");
+}
+
+/** Sets the current game's builds folder, or restores the default with null. Returns the folder now in use. */
+export function setBuildsDir(dir: string | null): Promise<string> {
+  return invoke<string>("set_builds_dir", { dir });
 }
 
 export function readTreeJson(version: string): Promise<string> {

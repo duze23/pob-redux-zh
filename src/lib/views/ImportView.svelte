@@ -5,6 +5,7 @@
   import {
     engine,
     listBuilds,
+    setBuildsDir,
     listBuildFolders,
     renameBuild,
     moveBuild,
@@ -39,6 +40,7 @@
   } from "$lib/engine.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { build, autosaveKey } from "$lib/state/build.svelte";
+  import { app } from "$lib/state/app.svelte";
   import { game } from "$lib/state/game.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { m } from "$lib/paraglide/messages";
@@ -255,6 +257,21 @@
   async function browsePlannerDir() {
     const dir = await open({ directory: true, defaultPath: gameBuilds?.dir || undefined, title: m.import_browse_title() }).catch(() => null);
     if (typeof dir === "string") setPlannerDir(dir);
+  }
+
+  async function changeBuildsDir(dir: string | null) {
+    try {
+      await setBuildsDir(dir);
+      await app.refreshPaths();
+      await refresh();
+    } catch (e) {
+      say(String(e));
+    }
+  }
+
+  async function browseBuildsDir() {
+    const dir = await open({ directory: true, defaultPath: paths?.builds_dir, title: m.import_builds_browse_title() }).catch(() => null);
+    if (typeof dir === "string") await changeBuildsDir(dir);
   }
 
   function reveal(path: string) {
@@ -889,7 +906,11 @@
           <div class="srcpath">
             <span class="picon"><Icon name="folder" size={13} /></span>
             <code class="mono ptext" title={paths.builds_dir}>{paths.builds_dir}</code>
+            <button class="btn sm" title={m.import_builds_dir_title()} onclick={browseBuildsDir}>{m.import_browse()}</button>
             <button class="btn sm" onclick={() => paths && reveal(paths.builds_dir)}>{m.import_show_folder()}</button>
+            {#if paths.builds_dir !== paths.default_builds_dir}
+              <button class="btn sm" title={m.import_builds_reset_title({ path: paths.default_builds_dir })} onclick={() => changeBuildsDir(null)}>{m.import_reset()}</button>
+            {/if}
           </div>
         {/if}
       </div>

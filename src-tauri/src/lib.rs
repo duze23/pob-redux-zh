@@ -43,6 +43,7 @@ pub(crate) struct Runtime {
 pub(crate) struct AppState {
     rt: std::sync::RwLock<Runtime>,
     pub(crate) user_dir: PathBuf,
+    builds_dirs: std::sync::RwLock<game::BuildsDirs>,
     pub(crate) mcp: mcp::McpState,
     /// True until a game has been chosen, inferred from a file, or set by env.
     first_run: std::sync::atomic::AtomicBool,
@@ -135,7 +136,8 @@ impl AppState {
         self.rt.read().unwrap().game
     }
     pub(crate) fn builds_dir(&self) -> PathBuf {
-        builds_dir(&self.user_dir, self.game())
+        let game = self.game();
+        self.builds_dirs.read().unwrap().get(game).cloned().unwrap_or_else(|| builds_dir(&self.user_dir, game))
     }
 }
 
@@ -317,6 +319,7 @@ struct AppPaths {
     pob_root: String,
     user_dir: String,
     builds_dir: String,
+    default_builds_dir: String,
     sync: Option<Value>,
     /// A build file to open once the engine is ready: first CLI argument
     /// ending in .xml (file association / drag onto the exe) or POB_REDUX_OPEN.
@@ -373,6 +376,7 @@ fn app_paths(state: State<'_, AppState>) -> AppPaths {
         pob_root: pob_root.to_string_lossy().to_string(),
         user_dir: state.user_dir.to_string_lossy().to_string(),
         builds_dir: state.builds_dir().to_string_lossy().to_string(),
+        default_builds_dir: builds_dir(&state.user_dir, state.game()).to_string_lossy().to_string(),
         sync,
         open_on_start: open_on_start(),
         initial_view: std::env::var("POB_REDUX_VIEW").ok(),
@@ -387,6 +391,24 @@ fn app_paths(state: State<'_, AppState>) -> AppPaths {
 
 pub(crate) fn builds_dir(user_dir: &Path, game: Game) -> PathBuf {
     user_dir.join(game.user_subdir()).join("Builds")
+}
+
+/// Choose the current game's builds folder; `None` goes back to the default under Documents.
+#[tauri::command]
+fn set_builds_dir(app: tauri::AppHandle, state: State<'_, AppState>, dir: Option<String>) -> Result<String, String> {
+    let game = state.game();
+    let dir = dir.map(|d| PathBuf::from(d.trim())).filter(|d| !d.as_os_str().is_empty());
+    if let Some(d) = &dir {
+        if !d.is_absolute() {
+            return Err(format!("not a full folder path: {}", d.display()));
+        }
+        std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    let mut settings = game::load_settings(&app);
+    settings.builds_dirs.set(game, dir.clone());
+    game::save_settings(&app, &settings)?;
+    state.builds_dirs.write().unwrap().set(game, dir);
+    Ok(state.builds_dir().to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1044,7 +1066,9 @@ fn game_status(state: State<'_, AppState>) -> GameStatus {
 #[tauri::command]
 fn set_game(app: tauri::AppHandle, state: State<'_, AppState>, game: Game) -> Result<GameStatus, String> {
     state.first_run.store(false, std::sync::atomic::Ordering::Relaxed);
-    game::save_settings(&app, &game::Settings { game: Some(game) })?;
+    let mut settings = game::load_settings(&app);
+    settings.game = Some(game);
+    game::save_settings(&app, &settings)?;
     if state.game() != game {
         if find_pob_root(&app, game).is_none() {
             return Err(format!("{} data is missing: run pob-sync --game {}", game.user_subdir(), game.id()));
@@ -1221,6 +1245,7 @@ pub fn run() {
             app.manage(AppState {
                 rt: std::sync::RwLock::new(rt),
                 user_dir,
+                builds_dirs: std::sync::RwLock::new(game::load_settings(handle).builds_dirs),
                 mcp: mcp::McpState::new(),
                 first_run: std::sync::atomic::AtomicBool::new(first_run),
                 pending_link: std::sync::Mutex::new(link),
@@ -1260,6 +1285,7 @@ pub fn run() {
             plan_points_parallel,
             gem_dps_parallel,
             app_paths,
+            set_builds_dir,
             update_method,
             take_open_link,
             session_info,
