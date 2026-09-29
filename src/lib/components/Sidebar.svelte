@@ -832,12 +832,17 @@
   .warnings {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    padding-top: 0;
+    padding-bottom: 0;
   }
   .warn {
+    padding: 6px 0;
     font-size: var(--fs-xs);
     color: var(--warn);
     line-height: 1.35;
+  }
+  .warn + .warn {
+    border-top: 1px solid var(--line-1);
   }
   .empty {
     flex: 1;
