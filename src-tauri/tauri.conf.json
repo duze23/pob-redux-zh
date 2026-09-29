@@ -64,7 +64,9 @@
       }
     },
     "linux": {
-      "appimage": { "bundleMediaFramework": false }
+      "appimage": { "bundleMediaFramework": false },
+      "deb": { "depends": ["libasound2"] },
+      "rpm": { "depends": ["alsa-lib"] }
     },
     "macOS": {
       "minimumSystemVersion": "11.0",

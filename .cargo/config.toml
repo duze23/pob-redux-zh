@@ -1,0 +1,7 @@
+[env]
+# whisper.cpp: a portable AVX2 build instead of -march=native.
+GGML_NATIVE = "OFF"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"

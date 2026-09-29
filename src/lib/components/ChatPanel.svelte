@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { chat, experimentDelta, MAX_WIDTH, MIN_WIDTH, type ToolTurn } from "$lib/state/chat.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ModelPicker from "$lib/components/ModelPicker.svelte";
@@ -9,6 +10,7 @@
   import Markdown from "$lib/components/Markdown.svelte";
   import { build } from "$lib/state/build.svelte";
   import { game } from "$lib/state/game.svelte";
+  import { voice } from "$lib/state/voice.svelte";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { m } from "$lib/paraglide/messages";
 
@@ -151,6 +153,29 @@
     }
   }
 
+  onMount(() => void voice.init());
+
+  $effect(() => {
+    if (chat.busy) void voice.cancel();
+  });
+
+  async function toggleVoice() {
+    if (voice.phase !== "recording") return voice.start();
+    const text = await voice.stop();
+    if (!text) return;
+    const cur = chat.input;
+    chat.input = cur && !/\s$/.test(cur) ? `${cur} ${text}` : cur + text;
+    box?.focus();
+  }
+
+  function onWindowKey(e: KeyboardEvent) {
+    if (e.key === "Escape" && voice.phase === "recording") {
+      e.preventDefault();
+      e.stopPropagation();
+      void voice.cancel();
+    }
+  }
+
   const summary = (t: ToolTurn) => {
     const a = t.args as Record<string, unknown> | null;
     if (!a) return "";
@@ -160,6 +185,8 @@
       .join(" ");
   };
 </script>
+
+<svelte:window onkeydown={onWindowKey} />
 
 <aside class="chat" style:width="{chat.width}px">
   <div
@@ -379,9 +406,24 @@
             </span>
           {/if}
           <ContextMeter />
+          {#if voice.ready && !chat.busy}
+            <button
+              class="mic"
+              class:rec={voice.phase === "recording"}
+              class:wait={voice.phase === "transcribing"}
+              style:--lvl={Math.min(1, Math.sqrt(voice.level) * 3)}
+              onclick={toggleVoice}
+              disabled={voice.phase === "transcribing"}
+              aria-pressed={voice.phase === "recording"}
+              title={voice.phase === "recording" ? m.chat_voice_stop() : voice.phase === "transcribing" ? m.chat_voice_working() : m.chat_voice_start()}
+              aria-label={voice.phase === "recording" ? m.chat_voice_stop() : m.chat_voice_start()}
+            >
+              <Icon name={voice.phase === "recording" ? "stop" : "microphone"} size={voice.phase === "recording" ? 12 : 14} />
+            </button>
+          {/if}
           {#if chat.busy}
             <button class="send stop" onclick={() => chat.stop()} title={m.chat_stop()} aria-label={m.chat_stop()}>
-              <Icon name="stop" size={11} />
+              <Icon name="stop" size={12} />
             </button>
           {:else}
             <button class="send" onclick={() => chat.send()} disabled={!chat.input.trim() || chat.warm === "loading" || chat.warm === "priming"} title={chat.warm === "loading" || chat.warm === "priming" ? m.chat_waiting_model() : m.chat_send()} aria-label={m.chat_send()}>
@@ -391,6 +433,7 @@
         </div>
       </div>
       {#if chat.modelsError}<div class="terr small">{chat.modelsError}</div>{/if}
+      {#if voice.error}<div class="terr small">{voice.error}</div>{/if}
     </div>
   {/if}
 </aside>
@@ -913,6 +956,32 @@
     background: var(--bg-3);
     color: var(--fg-4);
     cursor: default;
+  }
+  .mic {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    color: var(--fg-2);
+    cursor: pointer;
+  }
+  .mic:hover:not(:disabled) {
+    color: var(--fg-0);
+    background: var(--bg-hover);
+  }
+  .mic.rec {
+    color: var(--fg-0);
+    border-color: var(--bad);
+    box-shadow: 0 0 0 calc(var(--lvl, 0) * 5px) color-mix(in oklab, var(--bad) 35%, transparent);
+    transition: box-shadow 60ms linear;
+  }
+  .mic.wait {
+    cursor: default;
+    animation: pulse 1.2s ease-in-out infinite;
   }
   .send.stop {
     background: var(--bg-3);

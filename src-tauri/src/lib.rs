@@ -16,6 +16,7 @@ mod ninja;
 mod links;
 mod diagnostics;
 mod game;
+mod voice;
 
 use std::sync::Arc;
 
@@ -1234,6 +1235,7 @@ pub fn run() {
                 agent::statuses(&handle, false, None).await;
             });
             app.manage(decide::DecideState::new(&app.handle().clone()));
+            app.manage(voice::VoiceState::new());
             // POB_REDUX_MCP=<port> brings the MCP server up at launch (scripts, tests)
             if let Some(port) = std::env::var("POB_REDUX_MCP").ok().and_then(|v| v.parse::<u16>().ok()) {
                 let handle = app.handle().clone();
@@ -1320,6 +1322,12 @@ pub fn run() {
             decide::decide_select,
             decide::decide_configure,
             decide::decide_ask,
+            voice::voice_status,
+            voice::voice_install,
+            voice::voice_remove,
+            voice::voice_start,
+            voice::voice_stop,
+            voice::voice_cancel,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

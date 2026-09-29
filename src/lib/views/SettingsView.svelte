@@ -10,6 +10,7 @@
   import { exportDiagnostics, revealLogs } from "$lib/engine.svelte";
   import { locale, LOCALES, LOCALE_LABEL, type LocalePreference } from "$lib/state/locale.svelte";
   import { decider } from "$lib/state/decide.svelte";
+  import { voice } from "$lib/state/voice.svelte";
   import { chat } from "$lib/state/chat.svelte";
   import AssistantSettings from "$lib/components/AssistantSettings.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
@@ -112,6 +113,7 @@
 
   onMount(() => {
     void decider.init();
+    void voice.init();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || document.querySelector('[role="alertdialog"]')) return;
       close();
@@ -448,6 +450,35 @@
           </div>
           <p class="note">{m.experimental_privacy()}</p>
         {/if}
+        <h2 class="label ghead">{m.voice_title()}</h2>
+        <div class="rows">
+          <label class="opt">
+            <span>
+              {m.voice_enable()}
+              <span class="hint">{m.voice_enable_hint()}</span>
+            </span>
+            <input class="switch" type="checkbox" role="switch" checked={voice.enabled} onchange={(e) => voice.setEnabled((e.target as HTMLInputElement).checked)} />
+          </label>
+          <div class="opt">
+            <span>
+              {m.voice_model()}
+              <span class="hint">
+                {voice.status?.installed ? m.voice_model_ready() : m.voice_model_missing({ size: Math.round((voice.status?.bytes ?? 0) / 1e6) })}
+              </span>
+            </span>
+            {#if voice.progress !== null}
+              <span class="dim mono">{m.voice_downloading({ pct: voice.progress })}</span>
+            {:else if voice.status?.installed}
+              <button class="btn sm ghost" disabled={voice.phase !== "idle"} onclick={() => voice.remove()}>{m.provider_remove()}</button>
+            {:else}
+              <button class="btn sm" onclick={() => voice.install()}>{m.voice_download()}</button>
+            {/if}
+          </div>
+          {#if voice.error}
+            <div class="opt err mono">{voice.error}</div>
+          {/if}
+        </div>
+        <p class="note">{m.voice_privacy()}</p>
       {:else if active === "updates"}
         {@render head(m.settings_updates(), m.settings_updates_desc(), version)}
         <div class="rows">

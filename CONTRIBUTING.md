@@ -18,11 +18,14 @@ that is easy to break. Keep it to one short line.
 You need:
 
 - Rust stable. On Windows, the MSVC toolchain. The first build compiles LuaJIT.
+- CMake and libclang. The first build of the app also compiles whisper.cpp for voice input. On
+  Windows, the "C++ Clang tools" component of Visual Studio provides libclang.
 - Bun 1.4 or newer. This is what CI uses.
 - Tauri's platform prerequisites. Windows: WebView2. Linux: `libwebkit2gtk-4.1-dev`,
-  `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `libssl-dev`. macOS: the Command Line Tools,
-  with the licence accepted (`sudo xcodebuild -license accept`); the system WKWebView needs nothing
-  installed. See [MACOS.md](MACOS.md).
+  `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `libssl-dev`, `libasound2-dev`,
+  `libclang-dev`. macOS: the Command Line Tools, with the licence accepted
+  (`sudo xcodebuild -license accept`); the system WKWebView needs nothing installed. See
+  [MACOS.md](MACOS.md).
 - Checkouts of [PathOfBuilding-PoE2](https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2)
   and [PathOfBuilding](https://github.com/PathOfBuildingCommunity/PathOfBuilding) next to this repo.
   To sync one game from somewhere else, run `bun run sync:poe2` or `bun run sync:poe1` with

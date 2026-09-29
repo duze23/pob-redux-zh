@@ -25,6 +25,7 @@ pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .max_file_size(4_000_000)
         .level(level)
         .level_for("pob", log::LevelFilter::Warn)
+        .level_for("whisper_rs", log::LevelFilter::Warn)
         .build()
 }
 
