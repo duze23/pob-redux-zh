@@ -5,7 +5,7 @@
   import { build } from "$lib/state/build.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import { game } from "$lib/state/game.svelte";
-  import { withDynamicNodes, NodeIndex, type TEdge, type TreeModel, type TNode } from "$lib/tree/model";
+  import { ascendancyShift, withCentredAscendancy, withDynamicNodes, NodeIndex, type TEdge, type TreeModel, type TNode } from "$lib/tree/model";
   import type { AssetStore } from "$lib/tree/assets";
   import { loadTree } from "$lib/tree/load";
   import PobText from "$lib/components/PobText.svelte";
@@ -20,9 +20,9 @@
   let wrap = $state<HTMLDivElement | null>(null);
   let searchEl = $state<HTMLInputElement | null>(null);
   let model = $state.raw<TreeModel | null>(null);
-  /** The static tree; `model` adds PoE1 cluster jewel subgraphs on top. */
+  /** The static tree; `model` adds PoE1 cluster jewel subgraphs and moves a PoE2 ascendancy onto the hub. */
   let baseModel: TreeModel | null = null;
-  let dynKey = "";
+  let modelKey = "";
   let assets: AssetStore | null = null;
   let assetsMissing = $state(false);
   let index: NodeIndex | null = null;
@@ -219,6 +219,8 @@
   // nodes inside a socketed jewel's radius, fetched lazily per socket
   const socketRadius = new Map<number, Set<number>>();
   const currentAsc = $derived(build.info?.ascendClassName && build.info.ascendClassName !== "None" ? build.info.ascendClassName : null);
+  /** The ascendancy the current one's nodes are tagged with; a variant borrows those of the one it replaces. */
+  const currentAscNodes = $derived(model?.classes.flatMap((c) => c.ascendancies).find((a) => a.name === currentAsc)?.replace ?? currentAsc);
   const currentClass = $derived(build.info?.className ?? null);
   const activeSpec = $derived(build.specs.find((s) => s.active) ?? null);
 
@@ -458,6 +460,7 @@
     ovAny: boolean;
     sockets: typeof sockets;
     asc: string | null;
+    ascNodes: string | null;
     cls: string | null;
     hover: TNode | null;
     path: Set<number>;
@@ -486,6 +489,7 @@
       ovAny,
       sockets,
       asc: currentAsc,
+      ascNodes: currentAscNodes,
       cls: currentClass,
       hover,
       path: hoverPath,
@@ -768,7 +772,7 @@
       const curAscId = M.classes.flatMap((c) => c.ascendancies).find((a) => a.name === S.asc)?.id ?? S.asc;
       for (const c of M.classes) {
         for (const a of c.ascendancies) {
-          if (!inView(a.x, a.y, a.half)) continue;
+          if (a.name === M.centred?.asc || !inView(a.x, a.y, a.half)) continue;
           if (a.replaceBy && (a.replaceBy === curAscId || a.replaceBy === S.asc)) continue;
           if (a.replace && a.name !== S.asc && a.id !== curAscId) continue;
           const [ax, ay] = toScreen(a.x, a.y);
@@ -795,7 +799,7 @@
         if (!inView(n.x, n.y, reach)) continue;
         const half = reach * scale;
         const lit = !!ov?.effect || S.alloc.has(n.id) || S.granted.has(n.id) || S.path.has(n.id);
-        const dimAsc = n.asc !== null && n.asc !== S.asc;
+        const dimAsc = n.asc !== null && n.asc !== S.ascNodes;
         const sx = tx(n.x);
         const sy = ty(n.y);
         ctx.globalAlpha = (lit ? 1 : 0.15) * (dimAsc ? 0.6 : 1);
@@ -811,7 +815,7 @@
       if (!boxInView(e.box)) continue;
       const a = M.nodes.get(e.a)!;
       const b = M.nodes.get(e.b)!;
-      const dim = e.asc !== null && e.asc !== S.asc;
+      const dim = e.asc !== null && e.asc !== S.ascNodes;
       edgeBuckets[EDGE_INDEX[edgeState(a, b, S)] * 2 + (dim ? 1 : 0)].push(e);
     }
     for (let i = 0; i < EDGE_ORDER.length; i++) {
@@ -845,7 +849,7 @@
       const lit = isAlloc || isGranted;
       const st = heat ? "alloc" : nodeState(n, S);
       const onPath = S.path.has(n.id);
-      const dimAsc = n.asc !== null && n.asc !== S.asc;
+      const dimAsc = n.asc !== null && n.asc !== S.ascNodes;
 
       if (!A) {
         drawFallback(ctx, n, sx, sy, lit, onPath, S.hover?.id === n.id);
@@ -864,7 +868,7 @@
       }
 
       if (n.kind === "ascStart") {
-        ctx.globalAlpha = n.asc === S.asc ? 1 : 0.5;
+        ctx.globalAlpha = n.asc === S.ascNodes ? 1 : 0.5;
         A.draw(ctx, n.overlay?.unalloc ?? "AscendancyMiddle", sx, sy, n.size.overlay * scale, n.size.overlay * scale);
         ctx.globalAlpha = 1;
         continue;
@@ -1024,7 +1028,7 @@
         if (!a || !b) continue;
         const st = edgeState(a, b, S);
         if (st === edgeState(a, b, base)) continue;
-        edges[EDGE_INDEX[st] * 2 + (e.asc !== null && e.asc !== S.asc ? 1 : 0)].push(e);
+        edges[EDGE_INDEX[st] * 2 + (e.asc !== null && e.asc !== S.ascNodes ? 1 : 0)].push(e);
       }
     }
     const socketColor = hoverJewel?.radiusIndex ? pobColor(S.radii[hoverJewel.radiusIndex - 1]?.color ?? "") : palette.search;
@@ -1064,7 +1068,7 @@
         const half = (n.kind === "socket" ? n.size.base : n.size.overlay) * scale;
         const tint = tintFor(n, S);
         if ((st !== nodeState(n, B) || tint !== tintFor(n, B)) && half > 0) {
-          ctx.globalAlpha = n.asc !== null && n.asc !== S.asc ? 0.6 : 1;
+          ctx.globalAlpha = n.asc !== null && n.asc !== S.ascNodes ? 0.6 : 1;
           if (half < DOT_PX) {
             ctx.beginPath();
             ctx.arc(sx, sy, Math.max(half * 0.75, 0.5), 0, Math.PI * 2);
@@ -1324,13 +1328,14 @@
     invalidate();
   }
 
-  /** Centre on the current ascendancy ring, where its nodes live, far from the class start. */
+  /** Centre on the current ascendancy ring, where its nodes live: the class hub in PoE2, else far from the class start. */
   function focusAscendancy() {
     if (!model || !currentAsc) return;
     const asc = model.classes.flatMap((c) => c.ascendancies).find((a) => a.name === currentAsc);
     if (!asc) return;
-    cx = asc.x;
-    cy = asc.y;
+    const shift = ui.treeAscCentre ? ascendancyShift(model, currentAsc) : null;
+    cx = asc.x + (shift?.dx ?? 0);
+    cy = asc.y + (shift?.dy ?? 0);
     scale = Math.min(1.2, (Math.min(w, h) / (asc.half * 2)) * 0.85);
     invalidate();
   }
@@ -1677,21 +1682,24 @@
     invalidate();
   });
 
-  /** Overlay PoE1 cluster jewel subgraphs on the static tree whenever PoB regenerates them. */
-  function applyDynamic() {
+  /** Overlay PoE1 cluster jewel subgraphs whenever PoB regenerates them, and centre the chosen PoE2 ascendancy. */
+  function deriveModel() {
     if (!baseModel) return;
     const dyn = build.tree?.dynamicNodes ?? [];
     const dynGroups = build.tree?.dynamicGroups ?? [];
-    const key = dyn.map((d) => `${d.id}:${d.x.toFixed(1)}:${d.y.toFixed(1)}:${d.links.join(",")}`).join("|");
-    if (key === dynKey && model) return;
-    dynKey = key;
-    model = withDynamicNodes(baseModel, dyn, dynGroups);
+    const centre = ui.treeAscCentre ? currentAsc : null;
+    const key = `${centre}|` + dyn.map((d) => `${d.id}:${d.x.toFixed(1)}:${d.y.toFixed(1)}:${d.links.join(",")}`).join("|");
+    if (key === modelKey && model) return;
+    modelKey = key;
+    model = withCentredAscendancy(withDynamicNodes(baseModel, dyn, dynGroups), centre);
     index = new NodeIndex(model.nodes.values());
     invalidate();
   }
   $effect(() => {
     void build.tree?.dynamicNodes;
-    applyDynamic();
+    void currentAsc;
+    void ui.treeAscCentre;
+    deriveModel();
   });
 
   let loadedVersion = "";
@@ -1716,8 +1724,8 @@
           };
         }
         baseModel = tree.model;
-        dynKey = "";
-        applyDynamic();
+        modelKey = "";
+        deriveModel();
         assets = store;
         assetsMissing = !store;
         jewelRadii = radii.radii;

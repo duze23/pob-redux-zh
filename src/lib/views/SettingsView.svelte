@@ -211,6 +211,13 @@
               {/each}
             </select>
           </label>
+          <label class="opt">
+            <span>
+              {m.settings_tree_asc_centre()}
+              <span class="hint">{m.settings_tree_asc_centre_hint()}</span>
+            </span>
+            <input class="switch" type="checkbox" role="switch" checked={ui.treeAscCentre} onchange={(e) => ui.setTreeAscCentre((e.target as HTMLInputElement).checked)} />
+          </label>
         </div>
       {:else if active === "numbers"}
         {@render head(m.settings_numbers(), m.settings_numbers_desc())}

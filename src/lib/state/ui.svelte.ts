@@ -28,6 +28,7 @@ class UiStore {
   scaleApplied = $state(1);
   treeWeaponSet = $state<WeaponSetMode>(0);
   treeStatDiff = $state(true);
+  treeAscCentre = $state(true);
 
   private systemLight = window.matchMedia("(prefers-color-scheme: light)");
   private systemContrast = window.matchMedia("(prefers-contrast: more)");
@@ -46,6 +47,7 @@ class UiStore {
       else if (named) this.contrastLevel = named === "most" ? 40 : named === "more" ? CONTRAST_SYSTEM : 0;
       if (typeof saved.scale === "number") this.scale = clampScale(saved.scale);
       if (typeof saved.treeStatDiff === "boolean") this.treeStatDiff = saved.treeStatDiff;
+      if (typeof saved.treeAscCentre === "boolean") this.treeAscCentre = saved.treeAscCentre;
     } catch {}
     this.applyTheme();
     this.systemLight.addEventListener("change", () => this.applyTheme());
@@ -72,6 +74,11 @@ class UiStore {
 
   setTreeStatDiff(show: boolean) {
     this.treeStatDiff = show;
+    this.save();
+  }
+
+  setTreeAscCentre(centre: boolean) {
+    this.treeAscCentre = centre;
     this.save();
   }
 
@@ -164,6 +171,7 @@ class UiStore {
           contrastLevel: this.contrastLevel,
           scale: this.scale,
           treeStatDiff: this.treeStatDiff,
+          treeAscCentre: this.treeAscCentre,
         }),
       );
     } catch {}
