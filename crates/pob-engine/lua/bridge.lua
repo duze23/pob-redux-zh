@@ -5807,9 +5807,13 @@ M.trade_search_start = function(p)
 	tradeGen.tradeTypeIndex = statusIndex
 	tradeState = { done = false }
 	tradeGen.requesterContext = nil
-	tradeGen.requesterCallback = function(_, queryJson, errMsg)
+	tradeGen.requesterCallback = function(_, query, errMsg)
 		tradeState.done = true
-		tradeState.query = queryJson
+		-- PoE2's generator hands back the bare filter table; PoE1's still sends the full JSON body.
+		if type(query) == "table" then
+			query = dkjson.encode({ query = query, sort = { ["statgroup.0"] = "desc" } })
+		end
+		tradeState.query = query
 		tradeState.err = errMsg and tostring(errMsg) or nil
 	end
 	tradeGen:StartQuery(slot, options)
