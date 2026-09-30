@@ -2,7 +2,8 @@
 //!
 //! Each `<name>_<w>_<h>_<format>.dds.zst` is a zstd-compressed DDS array
 //! texture: one named asset per layer, all layers the same size. tree.json's
-//! `ddsCoords[file][name]` gives the 1-based layer of every asset. Small
+//! `ddsCoords[file][name]` gives the 1-based layer of every asset, or
+//! `[x, y, w, h, layer]` when the art does not fill its layer. Small
 //! layers are packed into one atlas per sheet; large ones (backgrounds) get a
 //! file per layer, downscaled. `web/manifest.json` maps asset names to rects.
 
@@ -252,12 +253,18 @@ fn decode_sheet(
     let layers = dds.get_num_array_layers();
     let (w, h) = (dds.get_width(), dds.get_height());
 
-    let mut wanted: BTreeMap<u32, Vec<String>> = BTreeMap::new();
-    for (name, idx) in names.as_object().into_iter().flatten() {
-        if let Some(i) = idx.as_u64() {
-            if i >= 1 && (i as u32) <= layers {
-                wanted.entry(i as u32 - 1).or_default().push(name.clone());
-            }
+    let mut wanted: BTreeMap<(u32, Rect), Vec<String>> = BTreeMap::new();
+    for (name, pos) in names.as_object().into_iter().flatten() {
+        let n = |i: usize| pos.get(i).and_then(|v| v.as_u64()).map(|v| v as u32);
+        let (layer, rect) = match pos.as_u64() {
+            Some(i) => (i as u32, (0, 0, w, h)),
+            None => match (n(0), n(1), n(2), n(3), n(4)) {
+                (Some(x), Some(y), Some(rw), Some(rh), Some(i)) if x + rw <= w && y + rh <= h => (i, (x, y, rw, rh)),
+                _ => continue,
+            },
+        };
+        if layer >= 1 && layer <= layers {
+            wanted.entry((layer - 1, rect)).or_default().push(name.clone());
         }
     }
 
@@ -273,18 +280,21 @@ fn decode_sheet(
         let cols = (layers as f64).sqrt().ceil().max(1.0) as u32;
         let rows = layers.div_ceil(cols);
         let mut atlas = same.is_none().then(|| RgbaImage::new(cols * w, rows * h));
-        for (layer, layer_names) in &wanted {
+        let mut placed = BTreeSet::new();
+        for (&(layer, (x, y, rw, rh)), layer_names) in &wanted {
             let (cx, cy) = ((layer % cols) * w, (layer / cols) * h);
             if let Some(atlas) = atlas.as_mut() {
-                let mut img = decode_layer(&dds, *layer).with_context(|| format!("layer {layer}"))?;
-                if round {
-                    mask_round(&mut img, 0, 0, w, h);
+                if placed.insert(layer) {
+                    let img = decode_layer(&dds, layer).with_context(|| format!("layer {layer}"))?;
+                    image::imageops::replace(atlas, &img, cx as i64, cy as i64);
+                    decoded += 1;
                 }
-                image::imageops::replace(atlas, &img, cx as i64, cy as i64);
-                decoded += 1;
+                if round {
+                    mask_round(atlas, cx + x, cy + y, rw, rh);
+                }
             }
             for name in layer_names {
-                rects.insert(name.clone(), AssetRect { file: file.clone(), x: cx, y: cy, w, h, ow: w, oh: h, round });
+                rects.insert(name.clone(), AssetRect { file: file.clone(), x: cx + x, y: cy + y, w: rw, h: rh, ow: rw, oh: rh, round });
             }
         }
         if let Some(atlas) = atlas {
@@ -304,8 +314,11 @@ fn decode_sheet(
         fs::create_dir_all(&dir)?;
         // Backgrounds are drawn large but soft; many-layer sheets get a tighter cap.
         let max_dim: u32 = if layers > 16 { 512 } else { 1024 };
-        for (layer, layer_names) in &wanted {
-            let mut img = decode_layer(&dds, *layer).with_context(|| format!("layer {layer}"))?;
+        for (&(layer, (x, y, rw, rh)), layer_names) in &wanted {
+            let mut img = decode_layer(&dds, layer).with_context(|| format!("layer {layer}"))?;
+            if (x, y, rw, rh) != (0, 0, w, h) {
+                img = image::imageops::crop_imm(&img, x, y, rw, rh).to_image();
+            }
             let (ow, oh) = (img.width(), img.height());
             if ow.max(oh) > max_dim {
                 let s = max_dim as f64 / ow.max(oh) as f64;
@@ -313,13 +326,15 @@ fn decode_sheet(
                 let nh = ((oh as f64 * s).round() as u32).max(1);
                 img = image::imageops::resize(&img, nw, nh, FilterType::Triangle);
             }
-            let out = dir.join(format!("{layer}.webp"));
+            let shared = wanted.keys().filter(|(l, _)| *l == layer).count() > 1;
+            let stem = if shared { format!("{layer}-{x}-{y}-{rw}-{rh}") } else { layer.to_string() };
+            let out = dir.join(format!("{stem}.webp"));
             save_webp(&img, &out, Some(82.0))?;
             decoded += 1;
             files += 1;
             bytes += fs::metadata(&out)?.len();
-            let file = format!("TreeData/{version}/web/{base}/{layer}.webp");
-            let (list, n, b) = write_lods(&img, img.width().max(img.height()), 64, web, version, &format!("{base}/{layer}.webp"))?;
+            let file = format!("TreeData/{version}/web/{base}/{stem}.webp");
+            let (list, n, b) = write_lods(&img, img.width().max(img.height()), 64, web, version, &format!("{base}/{stem}.webp"))?;
             files += n;
             bytes += b;
             if !list.is_empty() {
