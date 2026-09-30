@@ -5,8 +5,8 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::time::{Instant, UNIX_EPOCH};
 
-use flate2::read::{DeflateDecoder, ZlibDecoder};
-use flate2::write::ZlibEncoder;
+use flate2::read::{DeflateDecoder, MultiGzDecoder, ZlibDecoder};
+use flate2::write::{GzEncoder, ZlibEncoder};
 use flate2::Compression;
 use mlua::{Lua, LuaSerdeExt, LuaString, Result as LuaResult, Table, Value};
 
@@ -43,12 +43,18 @@ pub fn build_table(lua: &Lua, epoch: Instant) -> LuaResult<Table> {
     )?;
 
     // SimpleGraphic's Deflate/Inflate are zlib-wrapped (PoB share codes are
-    // base64url(zlib(xml)), 0x78 0x9C header).
+    // base64url(zlib(xml)), 0x78 0x9C header); Deflate(data, true) writes gzip
+    // for trade site links, and Inflate reads either.
     t.set(
         "deflate",
-        lua.create_function(|lua, data: LuaString| {
-            let mut enc = ZlibEncoder::new(Vec::new(), Compression::best());
-            let res = enc.write_all(&data.as_bytes()).and_then(|_| enc.finish());
+        lua.create_function(|lua, (data, gzip): (LuaString, Option<bool>)| {
+            let res = if gzip == Some(true) {
+                let mut enc = GzEncoder::new(Vec::new(), Compression::best());
+                enc.write_all(&data.as_bytes()).and_then(|_| enc.finish())
+            } else {
+                let mut enc = ZlibEncoder::new(Vec::new(), Compression::best());
+                enc.write_all(&data.as_bytes()).and_then(|_| enc.finish())
+            };
             match res {
                 Ok(out) => Ok(Value::String(lua.create_string(&out)?)),
                 Err(e) => {
@@ -63,6 +69,15 @@ pub fn build_table(lua: &Lua, epoch: Instant) -> LuaResult<Table> {
         lua.create_function(|lua, data: LuaString| {
             let bytes = data.as_bytes();
             let mut out = Vec::new();
+            if bytes.starts_with(&[0x1f, 0x8b]) {
+                return match MultiGzDecoder::new(&bytes[..]).read_to_end(&mut out) {
+                    Ok(_) => Ok(Value::String(lua.create_string(&out)?)),
+                    Err(e) => {
+                        log::warn!("inflate failed: {e}");
+                        Ok(Value::Nil)
+                    }
+                };
+            }
             if ZlibDecoder::new(&bytes[..]).read_to_end(&mut out).is_ok() {
                 return Ok(Value::String(lua.create_string(&out)?));
             }

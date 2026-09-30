@@ -254,8 +254,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Compression
 -- ---------------------------------------------------------------------------
-function Deflate(data)
-	local r = native.deflate(data)
+function Deflate(data, isGzip)
+	local r = native.deflate(data, isGzip and true or false)
 	if r then return r end
 	return nil, "deflate failed"
 end
