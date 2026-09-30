@@ -685,7 +685,7 @@
   const BACKDROP = 1000;
   function drawBackdrop(ctx: CanvasRenderingContext2D, bw: number, bh: number) {
     const A = assets;
-    if (!A) return;
+    if (!A || !A.has("Background2")) return;
     if (!backdrop || backdrop.gen !== assetsGen || backdrop.dpr !== dpr) {
       const c = backdrop?.canvas ?? document.createElement("canvas");
       c.width = Math.floor(BACKDROP * dpr);
