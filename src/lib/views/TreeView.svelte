@@ -5,7 +5,7 @@
   import { build } from "$lib/state/build.svelte";
   import { ui } from "$lib/state/ui.svelte";
   import { game } from "$lib/state/game.svelte";
-  import { ascendancyShift, withCentredAscendancy, withDynamicNodes, NodeIndex, type TEdge, type TreeModel, type TNode } from "$lib/tree/model";
+  import { ascendancyShift, withAscendancyOnHub, withDynamicNodes, NodeIndex, type TEdge, type TreeModel, type TNode } from "$lib/tree/model";
   import type { AssetStore } from "$lib/tree/assets";
   import { loadTree } from "$lib/tree/load";
   import PobText from "$lib/components/PobText.svelte";
@@ -20,7 +20,7 @@
   let wrap = $state<HTMLDivElement | null>(null);
   let searchEl = $state<HTMLInputElement | null>(null);
   let model = $state.raw<TreeModel | null>(null);
-  /** The static tree; `model` adds PoE1 cluster jewel subgraphs and moves a PoE2 ascendancy onto the hub. */
+  /** The static tree; `model` adds PoE1 cluster jewel subgraphs and the PoE2 in-game ascendancy layout. */
   let baseModel: TreeModel | null = null;
   let modelKey = "";
   let assets: AssetStore | null = null;
@@ -772,7 +772,7 @@
       const curAscId = M.classes.flatMap((c) => c.ascendancies).find((a) => a.name === S.asc)?.id ?? S.asc;
       for (const c of M.classes) {
         for (const a of c.ascendancies) {
-          if (a.name === M.centred?.asc || !inView(a.x, a.y, a.half)) continue;
+          if (M.ascOnHub || !inView(a.x, a.y, a.half)) continue;
           if (a.replaceBy && (a.replaceBy === curAscId || a.replaceBy === S.asc)) continue;
           if (a.replace && a.name !== S.asc && a.id !== curAscId) continue;
           const [ax, ay] = toScreen(a.x, a.y);
@@ -1682,16 +1682,17 @@
     invalidate();
   });
 
-  /** Overlay PoE1 cluster jewel subgraphs whenever PoB regenerates them, and centre the chosen PoE2 ascendancy. */
+  /** Overlay PoE1 cluster jewel subgraphs whenever PoB regenerates them, and lay PoE2 ascendancies out as the game does. */
   function deriveModel() {
     if (!baseModel) return;
     const dyn = build.tree?.dynamicNodes ?? [];
     const dynGroups = build.tree?.dynamicGroups ?? [];
-    const centre = ui.treeAscCentre ? currentAsc : null;
-    const key = `${centre}|` + dyn.map((d) => `${d.id}:${d.x.toFixed(1)}:${d.y.toFixed(1)}:${d.links.join(",")}`).join("|");
+    const onHub = ui.treeAscCentre;
+    const key = `${onHub}:${currentAsc}|` + dyn.map((d) => `${d.id}:${d.x.toFixed(1)}:${d.y.toFixed(1)}:${d.links.join(",")}`).join("|");
     if (key === modelKey && model) return;
     modelKey = key;
-    model = withCentredAscendancy(withDynamicNodes(baseModel, dyn, dynGroups), centre);
+    const withDyn = withDynamicNodes(baseModel, dyn, dynGroups);
+    model = onHub ? withAscendancyOnHub(withDyn, currentAsc) : withDyn;
     index = new NodeIndex(model.nodes.values());
     invalidate();
   }

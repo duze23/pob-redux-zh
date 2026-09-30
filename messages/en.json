@@ -49,7 +49,7 @@
   "settings_scale_hint": "Ctrl+= and Ctrl+- step it, Ctrl+0 resets.",
   "settings_scale_limited": "The window fits {applied} at most. Make it larger to use {wanted}.",
   "settings_tree_asc_centre": "Ascendancy in the tree center",
-  "settings_tree_asc_centre_hint": "Path of Exile 2: draws the chosen ascendancy over the class art in the middle of the tree, as the game does.",
+  "settings_tree_asc_centre_hint": "Path of Exile 2: draws the chosen ascendancy over the class art in the middle of the tree and hides the others, as the game does.",
 
   "settings_thousands_show": "Show thousands separators",
   "settings_thousands_separator": "Thousands separator",

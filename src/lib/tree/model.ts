@@ -119,8 +119,8 @@ export interface TreeModel {
   groups: TGroupArt[];
   classStart: Map<string, number>;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  /** The ascendancy whose nodes were moved onto the class hub, and by how much. */
-  centred: { asc: string; dx: number; dy: number } | null;
+  /** PoE2's in-game layout: the chosen ascendancy sits on the class hub and the rim ones are hidden. */
+  ascOnHub: boolean;
 }
 
 // PassiveTreeView.lua draws these at fixed tree coordinates per class id.
@@ -566,7 +566,7 @@ export function parseTree(version: string, json: string): TreeModel {
     groups,
     classStart,
     bounds: { minX: raw.min_x, minY: raw.min_y, maxX: raw.max_x, maxY: raw.max_y },
-    centred: null,
+    ascOnHub: false,
   };
 }
 
@@ -581,22 +581,38 @@ export function ascendancyShift(M: TreeModel, name: string | null): { asc: TAsce
   return null;
 }
 
-/** The chosen ascendancy moved onto the class hub; its plate is the hub's size, so a shift keeps the layout. */
-export function withCentredAscendancy(base: TreeModel, name: string | null): TreeModel {
+/** PoE2's in-game layout: the chosen ascendancy shifted onto the hub, which is its plate's size, and the rest hidden. */
+export function withAscendancyOnHub(base: TreeModel, name: string | null): TreeModel {
+  if (!base.classes.some((c) => c.hubAsc)) return base;
   const s = ascendancyShift(base, name);
-  if (!s) return base;
-  const { dx, dy } = s;
-  const own = new Set([s.asc.id, s.asc.replace ?? s.asc.id]);
+  const own = new Set(s ? [s.asc.id, s.asc.replace ?? s.asc.id] : []);
+  const dx = s?.dx ?? 0;
+  const dy = s?.dy ?? 0;
   const nodes = new Map(base.nodes);
+  const b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
   for (const n of base.nodes.values()) {
-    if (n.asc && own.has(n.asc)) nodes.set(n.id, { ...n, x: n.x + dx, y: n.y + dy });
+    let shown = n;
+    if (n.asc) {
+      shown = own.has(n.asc) ? { ...n, x: n.x + dx, y: n.y + dy } : { ...n, hidden: true };
+      nodes.set(n.id, shown);
+    }
+    if (shown.hidden) continue;
+    b.minX = Math.min(b.minX, shown.x);
+    b.minY = Math.min(b.minY, shown.y);
+    b.maxX = Math.max(b.maxX, shown.x);
+    b.maxY = Math.max(b.maxY, shown.y);
   }
-  const edges = base.edges.map((e): TEdge => {
-    if (!e.asc || !own.has(e.asc)) return e;
-    const arc = e.arc && { ...e.arc, cx: e.arc.cx + dx, cy: e.arc.cy + dy };
-    return { ...e, arc, box: [e.box[0] + dx, e.box[1] + dy, e.box[2] + dx, e.box[3] + dy] };
-  });
-  return { ...base, nodes, edges, centred: { asc: s.asc.name, dx, dy } };
+  const edges: TEdge[] = [];
+  for (const e of base.edges) {
+    if (!e.asc) edges.push(e);
+    else if (own.has(e.asc)) {
+      const arc = e.arc && { ...e.arc, cx: e.arc.cx + dx, cy: e.arc.cy + dy };
+      edges.push({ ...e, arc, box: [e.box[0] + dx, e.box[1] + dy, e.box[2] + dx, e.box[3] + dy] });
+    }
+  }
+  const pad = 500;
+  const bounds = { minX: b.minX - pad, minY: b.minY - pad, maxX: b.maxX + pad, maxY: b.maxY + pad };
+  return { ...base, nodes, edges, bounds, ascOnHub: true };
 }
 
 /**
