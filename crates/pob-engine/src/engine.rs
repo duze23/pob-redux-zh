@@ -10,6 +10,7 @@ use crate::{Error, Result};
 
 const HOST_LUA: &str = include_str!("../lua/host.lua");
 const BRIDGE_LUA: &str = include_str!("../lua/bridge.lua");
+const MOD_FAMILIES_LUA: &str = include_str!("../lua/mod_families.lua");
 
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -69,6 +70,8 @@ impl Engine {
         let boot: Function = globals.get("__pob_boot")?;
         boot.call::<()>(())?;
 
+        let families: Table = lua.load(MOD_FAMILIES_LUA).set_name("mod_families.lua").eval()?;
+        globals.set("__mod_families", families)?;
         let methods: Table = lua.load(BRIDGE_LUA).set_name("bridge.lua").eval()?;
 
         let boot_ms = t0.elapsed().as_millis();

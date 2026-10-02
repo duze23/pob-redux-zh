@@ -4571,6 +4571,26 @@ M.list_bases = function(p)
 	return { bases = out, total = total, truncated = total > #out }
 end
 
+M._affix = {}
+M._affix.familyOf = (__mod_families or {})[IS_POE2 and "poe2" or "poe1"] or {}
+
+-- The game rolls one mod per family; PoB's group is only the mod type.
+function M._affix.families(mod, modId)
+	local g = mod.group or modId
+	return M._affix.familyOf[g] or { "group:" .. g }
+end
+
+function M._affix.blocked(used, mod, modId)
+	for _, f in ipairs(M._affix.families(mod, modId)) do
+		if used[f] then return true end
+	end
+	return false
+end
+
+function M._affix.use(used, mod, modId)
+	for _, f in ipairs(M._affix.families(mod, modId)) do used[f] = true end
+end
+
 -- The affix pool for a base at an item level, one row per mod family with the
 -- best tier that can roll. Built on a throwaway item so the spawn-weight and
 -- level rules are PoB's own. PoE1's pool also holds Delve, Mercenary and other
@@ -4629,10 +4649,15 @@ end
 -- (Strength, IncreasedLife, LocalIncreasedPhysicalDamagePercent), or a
 -- substring of the mod text. Family and text matches take the best tier the
 -- item level allows.
-local function resolveAffix(item, itemLevel, affixType, want, usedGroups)
+local function resolveAffix(item, itemLevel, affixType, want, usedFamilies, usedTags)
 	want = tostring(want)
 	local exact = item.affixes[want]
-	if exact and exact.type == affixType then return want, exact end
+	if exact and exact.type == affixType then
+		if M._affix.blocked(usedFamilies, exact, want) then
+			error(string.format("%s cannot roll beside a mod of the same family already on the item", want), 0)
+		end
+		return want, exact
+	end
 	local lw = want:lower()
 	-- An affix name ("Merciless", "of the Vampire") names a tier; the family
 	-- it belongs to is what the caller wants, at the best tier that rolls.
@@ -4640,18 +4665,18 @@ local function resolveAffix(item, itemLevel, affixType, want, usedGroups)
 	for _, mod in pairs(item.affixes) do
 		if mod.type == affixType and (mod.affix or ""):lower() == lw then wantGroup = mod.group break end
 	end
-	local bestId, bestMod
+	local bestId, bestMod, blockedHit
 	local families = {}
 	for modId, mod in pairs(item.affixes) do
 		if mod.type == affixType and (IS_POE2 or item.affixes ~= data.itemMods.Item or data.itemMods.Explicit[modId]) and item:GetModSpawnWeight(mod) > 0 and (mod.level or 1) <= itemLevel then
 			local g = mod.group or modId
 			families[g] = true
-			if not usedGroups[g] then
-				local label = table.concat(mod, "/")
-				local hit = g:lower() == lw or g == wantGroup or label:lower():find(lw, 1, true) ~= nil
-				if hit and (not bestMod or (mod.level or 0) > (bestMod.level or 0)) then
-					bestId, bestMod = modId, mod
-				end
+			local label = table.concat(mod, "/")
+			local hit = g:lower() == lw or g == wantGroup or label:lower():find(lw, 1, true) ~= nil
+			if hit and (M._affix.blocked(usedFamilies, mod, modId) or item:GetModSpawnWeight(mod, usedTags) <= 0) then
+				blockedHit = true
+			elseif hit and (not bestMod or (mod.level or 0) > (bestMod.level or 0)) then
+				bestId, bestMod = modId, mod
 			end
 		end
 	end
@@ -4659,7 +4684,7 @@ local function resolveAffix(item, itemLevel, affixType, want, usedGroups)
 		local names = {}
 		for g in pairs(families) do names[#names + 1] = g end
 		table.sort(names)
-		local used = usedGroups[wantGroup or lw] and " (that family is already on the item)" or ""
+		local used = blockedHit and " (a mod already on the item excludes it)" or ""
 		error(string.format("no %s matching %q rolls on %s at item level %d%s. %s families that do: %s",
 			affixType:lower(), want, item.baseName, itemLevel, used, affixType, table.concat(names, ", ")), 0)
 	end
@@ -4681,7 +4706,7 @@ M.craft_rare = function(p)
 	local itemLevel = tonumber(p.itemLevel) or (IS_POE2 and 82 or 86)
 	item.itemLevel = itemLevel
 	local chosen = array({})
-	local usedGroups = {}
+	local usedFamilies, usedTags = {}, {}
 	for _, spec in ipairs({ { "prefixes", "Prefix" }, { "suffixes", "Suffix" } }) do
 		local tableName, affixType = spec[1], spec[2]
 		local wants = p[tableName] or {}
@@ -4690,8 +4715,9 @@ M.craft_rare = function(p)
 			error(string.format("%s takes at most %d %s", entry.name, limit, tableName), 0)
 		end
 		for i, want in ipairs(wants) do
-			local modId, mod = resolveAffix(item, itemLevel, affixType, want, usedGroups)
-			usedGroups[mod.group or modId] = true
+			local modId, mod = resolveAffix(item, itemLevel, affixType, want, usedFamilies, usedTags)
+			M._affix.use(usedFamilies, mod, modId)
+			for _, tag in ipairs(mod.tags or {}) do usedTags[tag] = true end
 			item[tableName][i] = { modId = modId, range = range }
 			chosen[#chosen + 1] = { slot = affixType, modId = modId, group = opt(mod.group), level = opt(mod.level), text = table.concat(mod, "/") }
 		end
@@ -4732,16 +4758,17 @@ M.craft_rare = function(p)
 end
 
 local function affixSlotOptions(item, affixType, tableName, outputIndex)
-	local extraTags, excludeGroups = {}, {}
+	local extraTags, excludeFamilies = {}, {}
 	local rareLikeUnique = not IS_POE2 and item.rareLikeUnique
 	local allowDuplicateGroups = rareLikeUnique and rareLikeUnique.allowDuplicateGroups
 	if rareLikeUnique and rareLikeUnique.ignoreModType and tableName == "prefixes" then affixType = nil end
 	for _, tbl in ipairs({ "prefixes", "suffixes" }) do
 		for index = 1, (item[tbl].limit or (item.affixLimit / 2)) do
 			if index ~= outputIndex or tbl ~= tableName then
-				local mod = item.affixes[item[tbl][index] and item[tbl][index].modId]
+				local modId = item[tbl][index] and item[tbl][index].modId
+				local mod = item.affixes[modId]
 				if mod then
-					if mod.group and not allowDuplicateGroups then excludeGroups[mod.group] = true end
+					if mod.group and not allowDuplicateGroups then M._affix.use(excludeFamilies, mod, modId) end
 					for _, tag in ipairs(mod.tags or {}) do extraTags[tag] = true end
 				end
 			end
@@ -4755,7 +4782,7 @@ local function affixSlotOptions(item, affixType, tableName, outputIndex)
 	local retainedAffixes = {}
 	local selected = item[tableName][outputIndex] and item[tableName][outputIndex].modId
 	for modId, mod in pairs(item.affixes) do
-		if (not affixType or mod.type == affixType) and not excludeGroups[mod.group] then
+		if (not affixType or mod.type == affixType) and not M._affix.blocked(excludeFamilies, mod, modId) then
 			if IS_POE2 then
 				if item:GetModSpawnWeight(mod, extraTags) > 0 then affixList[#affixList + 1] = modId end
 			elseif not item:CheckIfModIsDelve(mod) then
@@ -4812,8 +4839,6 @@ local function affixSlotOptions(item, affixType, tableName, outputIndex)
 	end
 	return opts
 end
-
-M._affix = {}
 
 function M._affix.render(mod, range)
 	local lines = {}
@@ -8909,7 +8934,7 @@ local function optimiseSlot(slotName, cfg, w, base, itemLevel, range, title)
 	-- A chosen mod's tags zero the spawn weight of what the game forbids beside it.
 	local tags = {}
 	local function take(fam)
-		used[fam.group] = true
+		M._affix.use(used, item.affixes[fam.modId], fam.modId)
 		for _, tag in ipairs(item.affixes[fam.modId].tags or {}) do tags[tag] = true end
 	end
 	-- Boots carry movement speed on 57 of 63 published builds; it is the one
@@ -8934,7 +8959,7 @@ local function optimiseSlot(slotName, cfg, w, base, itemLevel, range, title)
 			local n = #chosen[t]
 			if n < limits[t] then
 				for _, fam in ipairs(pools[t]) do
-					if not used[fam.group] and item:GetModSpawnWeight(item.affixes[fam.modId], tags) > 0 then
+					if not M._affix.blocked(used, item.affixes[fam.modId], fam.modId) and item:GetModSpawnWeight(item.affixes[fam.modId], tags) > 0 then
 						item[t][n + 1] = { modId = fam.modId, range = range }
 						local out = evaluate()
 						evals = evals + 1
@@ -8951,7 +8976,7 @@ local function optimiseSlot(slotName, cfg, w, base, itemLevel, range, title)
 		end
 		if not best then break end
 		chosen[bestType][#chosen[bestType] + 1] = best
-		used[best.group] = true
+		take(best)
 		item[bestType][#chosen[bestType]] = { modId = best.modId, range = range }
 		bestOutput = bestOut
 	end
