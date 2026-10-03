@@ -27,7 +27,7 @@ export interface AssetManifest {
 }
 
 interface Slot {
-  img: HTMLImageElement;
+  img: ImageBitmap | HTMLImageElement | null;
   ready: boolean;
   failed: boolean;
 }
@@ -62,20 +62,35 @@ export class AssetStore {
     return this.manifest.assets[name];
   }
 
-  image(file: string): HTMLImageElement | null {
+  image(file: string): ImageBitmap | HTMLImageElement | null {
     let s = this.slots.get(file);
     if (!s) {
-      const img = new Image();
-      s = { img, ready: false, failed: false };
-      this.slots.set(file, s);
-      img.onload = () => {
-        s!.ready = true;
+      const slot: Slot = { img: null, ready: false, failed: false };
+      this.slots.set(file, slot);
+      const url = convertFileSrc(file, "pobasset");
+      const done = (img: ImageBitmap | HTMLImageElement) => {
+        slot.img = img;
+        slot.ready = true;
         this.onReady();
       };
-      img.onerror = () => {
-        s!.failed = true;
+      const element = () => {
+        const img = new Image();
+        img.onload = () => done(img);
+        img.onerror = () => {
+          slot.failed = true;
+        };
+        img.src = url;
       };
-      img.src = convertFileSrc(file, "pobasset");
+      // Decoded off the main thread; an <img> decodes on its first draw, mid-frame.
+      if (typeof createImageBitmap === "function") {
+        fetch(url)
+          .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+          .then((b) => createImageBitmap(b))
+          .then(done, element);
+      } else {
+        element();
+      }
+      s = slot;
     }
     return s.ready ? s.img : null;
   }
@@ -98,7 +113,7 @@ export class AssetStore {
   }
 
   /** The smallest copy with twice `px` (just enough resamples soft); until it loads, the nearest loaded one. */
-  private source(r: AssetRect, px: number): [HTMLImageElement, number] | null {
+  private source(r: AssetRect, px: number): [ImageBitmap | HTMLImageElement, number] | null {
     const lods = this.manifest.lods?.[r.file];
     if (!lods) {
       const img = this.image(r.file);
@@ -118,7 +133,7 @@ export class AssetStore {
     const all = [{ file: r.file, scale: 1 }, ...lods];
     for (const l of [...all.filter((l) => l.scale < scale).reverse(), ...all.filter((l) => l.scale > scale)]) {
       const s = this.slots.get(l.file);
-      if (s?.ready) return [s.img, l.scale];
+      if (s?.ready && s.img) return [s.img, l.scale];
     }
     return null;
   }

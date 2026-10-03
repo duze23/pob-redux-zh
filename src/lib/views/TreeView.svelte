@@ -234,6 +234,8 @@
   const animate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let spinning = false;
   let spinTimer = 0;
+  let ringTime = 0;
+  const ringCache = new Map<string, { canvas: HTMLCanvasElement; key: string }>();
 
   const palette = {
     bg: "#0b0b0c",
@@ -477,16 +479,20 @@
     h: number;
   }
   const NO_IDS: Set<number> = new Set();
+  let ovPlain: { from: unknown; copy: typeof overrides; any: boolean } = { from: null, copy: {}, any: false };
   function scene(): Scene {
     const ov = overrides;
-    const ovAny = Object.keys(ov).length > 0;
+    if (ovPlain.from !== ov) {
+      const any = Object.keys(ov).length > 0;
+      ovPlain = { from: ov, copy: any ? { ...ov } : ov, any };
+    }
     return {
       alloc: allocated,
       granted,
       ws: weaponSets,
       mode: wsMode,
-      ov: ovAny ? { ...ov } : ov,
-      ovAny,
+      ov: ovPlain.copy,
+      ovAny: ovPlain.any,
       sockets,
       asc: currentAsc,
       ascNodes: currentAscNodes,
@@ -500,7 +506,7 @@
       radii: jewelRadii,
     };
   }
-  /** The scene as it looks with nothing hovered, which is what the layer holds. */
+  /** The scene as it looks with nothing hovered, which is what the tiles hold. */
   function baseScene(S: Scene): Scene {
     if (S.hover === null && S.path.size === 0 && S.dep.size === 0) return S;
     return { ...S, hover: null, path: NO_IDS, dep: NO_IDS };
@@ -521,6 +527,7 @@
       /** Whether anything within `r` tree units of (x, y) is on screen. */
       inView: (x: number, y: number, r = 0) => x >= minX - r && x <= maxX + r && y >= minY - r && y <= maxY + r,
       boxInView: (b: TEdge["box"]) => b[2] >= minX && b[0] <= maxX && b[3] >= minY && b[1] <= maxY,
+      bounds: [minX, maxX, minY, maxY] as [number, number, number, number],
     };
   }
   /** How far a node's art, dot and outline rings reach, in tree units. */
@@ -528,73 +535,221 @@
     return Math.max(n.size.base, n.size.overlay, n.r, 30);
   }
 
-  // The tree without hover decoration is drawn into its own canvas and each
-  // frame blits it, so panning, zooming and hovering cost one image copy
-  // instead of thousands. Anything in the key changes the picture.
-  let layer: {
+  // The tree without hover decoration lives in tiles; anything in the key changes the picture.
+  interface Tile {
+    i: number;
+    j: number;
     below: HTMLCanvasElement;
-    belowCtx: CanvasRenderingContext2D;
     nodes: HTMLCanvasElement;
-    nodesCtx: CanvasRenderingContext2D;
-    cx: number;
-    cy: number;
-    w: number;
-    h: number;
+    gen: number;
+  }
+  interface TileSet {
     scale: number;
+    dpr: number;
     key: unknown[];
-  } | null = null;
+    tiles: Map<string, Tile>;
+  }
+  const TILE = 256;
+  // Tiles that something else can stand in for wait for a frame with time left.
+  const TILE_BUDGET = 6;
+  let tileSet: TileSet | null = null;
+  let fallbackSet: TileSet | null = null;
+  // The whole tree, small, so whatever a zoom reveals has a stand-in at once.
+  let overviewSet: TileSet | null = null;
+  let overviewReady = false;
+  const OVERVIEW_PX = 1024;
+  const spare: { below: HTMLCanvasElement; nodes: HTMLCanvasElement }[] = [];
   let assetsGen = 0;
   let zooming = false;
   let zoomTimer = 0;
-  // Blitting the layer magnified past this looks soft, so it re-renders.
+  // Blitting tiles magnified past this looks soft, so they are redrawn.
   const ZOOM_BAND = 1.7;
   function layerKey(S: Scene): unknown[] {
-    return [dpr, w, h, model, assetsGen, S.alloc, S.granted, S.ws, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
+    return [dpr, model, S.alloc, S.granted, S.ws, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
   }
-  function layerUsable(S: Scene): boolean {
-    const L = layer;
-    if (!L) return false;
-    const k = layerKey(S);
-    if (k.length !== L.key.length || k.some((v, i) => v !== L.key[i])) return false;
-    const z = scale / L.scale;
-    if (z !== 1 && (!zooming || z < 1 / ZOOM_BAND || z > ZOOM_BAND)) return false;
-    return Math.abs(cx - L.cx) + w / 2 / scale <= L.w / 2 / L.scale && Math.abs(cy - L.cy) + h / 2 / scale <= L.h / 2 / L.scale;
-  }
-  function renderLayer(S: Scene) {
-    // Only a pan or a zoom needs room around the view; a settled view renders
-    // what it shows, so allocating a node repaints one screen and not four.
-    // The margin is in device pixels across two canvases, so a dense display
-    // trades a little of it back rather than holding a hundred megabytes.
-    const pad = drag?.moved || zooming;
-    const lw = w + (pad ? 2 * Math.round(Math.min(w / 2, 900) / dpr) : 0);
-    const lh = h + (pad ? 2 * Math.round(Math.min(h / 2, 700) / dpr) : 0);
-    if (!layer) {
-      const below = document.createElement("canvas");
-      const nodes = document.createElement("canvas");
-      layer = { below, belowCtx: below.getContext("2d")!, nodes, nodesCtx: nodes.getContext("2d")!, cx: 0, cy: 0, w: 0, h: 0, scale: 1, key: [] };
+  function dropSet(set: TileSet | null) {
+    if (!set) return;
+    for (const t of set.tiles.values()) {
+      if (spare.length < 64) spare.push({ below: t.below, nodes: t.nodes });
     }
-    const pw = Math.floor(lw * dpr);
-    const ph = Math.floor(lh * dpr);
-    for (const c of [layer.below, layer.nodes]) {
-      if (c.width !== pw || c.height !== ph) {
-        c.width = pw;
-        c.height = ph;
+    set.tiles.clear();
+  }
+  function tileCanvas(): HTMLCanvasElement {
+    const c = document.createElement("canvas");
+    c.width = TILE;
+    c.height = TILE;
+    return c;
+  }
+  function tileRange(set: TileSet, V: View, ring = 0) {
+    const tw = TILE / set.dpr / set.scale;
+    const hw = V.w / 2 / scale;
+    const hh = V.h / 2 / scale;
+    return {
+      i0: Math.floor((V.cx - hw) / tw) - ring,
+      i1: Math.floor((V.cx + hw) / tw) + ring,
+      j0: Math.floor((V.cy - hh) / tw) - ring,
+      j1: Math.floor((V.cy + hh) / tw) + ring,
+    };
+  }
+  function renderTile(set: TileSet, i: number, j: number, S: Scene) {
+    const key = `${i},${j}`;
+    let t = set.tiles.get(key);
+    if (!t) {
+      const pair = spare.pop() ?? { below: tileCanvas(), nodes: tileCanvas() };
+      t = { i, j, below: pair.below, nodes: pair.nodes, gen: -1 };
+      set.tiles.set(key, t);
+    }
+    const css = TILE / set.dpr;
+    const tw = css / set.scale;
+    const V: View = { cx: (i + 0.5) * tw, cy: (j + 0.5) * tw, w: css, h: css };
+    const B = baseScene(S);
+    const live = scale;
+    scale = set.scale;
+    const below = t.below.getContext("2d", { alpha: false })!;
+    below.setTransform(set.dpr, 0, 0, set.dpr, 0, 0);
+    drawBelow(below, B, V, i * css, j * css);
+    const nodes = t.nodes.getContext("2d")!;
+    nodes.setTransform(1, 0, 0, 1, 0, 0);
+    nodes.clearRect(0, 0, TILE, TILE);
+    nodes.setTransform(set.dpr, 0, 0, set.dpr, 0, 0);
+    drawNodes(nodes, B, V);
+    scale = live;
+    t.gen = assetsGen;
+  }
+  function covers(F: TileSet, T: TileSet, i: number, j: number): boolean {
+    const tw = TILE / T.dpr / T.scale;
+    const fw = TILE / F.dpr / F.scale;
+    for (let fj = Math.floor((j * tw) / fw); fj * fw < (j + 1) * tw; fj++) {
+      for (let fi = Math.floor((i * tw) / fw); fi * fw < (i + 1) * tw; fi++) {
+        if (!F.tiles.has(`${fi},${fj}`)) return false;
       }
     }
-    const B = baseScene(S);
-    const LV: View = { cx, cy, w: lw, h: lh };
-    layer.belowCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawBelow(layer.belowCtx, B, LV);
-    layer.nodesCtx.setTransform(1, 0, 0, 1, 0, 0);
-    layer.nodesCtx.clearRect(0, 0, pw, ph);
-    layer.nodesCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawNodes(layer.nodesCtx, B, LV);
-    layer.cx = cx;
-    layer.cy = cy;
-    layer.w = lw;
-    layer.h = lh;
-    layer.scale = scale;
-    layer.key = layerKey(S);
+    return true;
+  }
+  function coverage(set: TileSet, V: View): number {
+    const r = tileRange(set, V);
+    let have = 0;
+    for (let j = r.j0; j <= r.j1; j++) for (let i = r.i0; i <= r.i1; i++) if (set.tiles.has(`${i},${j}`)) have++;
+    return have / ((r.i1 - r.i0 + 1) * (r.j1 - r.j0 + 1));
+  }
+  // Rounded so neighbouring tiles share an edge and no seam shows.
+  function tileRect(set: TileSet, V: View, i: number, j: number): [number, number, number, number] {
+    const tw = TILE / set.dpr / set.scale;
+    const sx = (x: number) => Math.round(((x - V.cx) * scale + V.w / 2) * dpr) / dpr;
+    const sy = (y: number) => Math.round(((y - V.cy) * scale + V.h / 2) * dpr) / dpr;
+    const x0 = sx(i * tw);
+    const y0 = sy(j * tw);
+    return [x0, y0, sx((i + 1) * tw) - x0, sy((j + 1) * tw) - y0];
+  }
+  function blitTiles(ctx: CanvasRenderingContext2D, set: TileSet, V: View, which: "below" | "nodes") {
+    const r = tileRange(set, V);
+    for (let j = r.j0; j <= r.j1; j++) {
+      for (let i = r.i0; i <= r.i1; i++) {
+        const t = set.tiles.get(`${i},${j}`);
+        if (!t) continue;
+        const [x, y, tw, th] = tileRect(set, V, i, j);
+        ctx.drawImage(t[which], x, y, tw, th);
+      }
+    }
+  }
+  /** True when tiles are still waiting for a later frame. */
+  function updateTiles(S: Scene, V: View): boolean {
+    const key = layerKey(S);
+    const T0 = tileSet;
+    if (!T0 || T0.key.length !== key.length || T0.key.some((v, i) => v !== key[i])) {
+      dropSet(tileSet);
+      dropSet(fallbackSet);
+      dropSet(overviewSet);
+      fallbackSet = null;
+      overviewSet = null;
+      overviewReady = false;
+      tileSet = { scale, dpr, key, tiles: new Map() };
+    } else if (T0.scale !== scale) {
+      const z = scale / T0.scale;
+      if (!zooming || z < 1 / ZOOM_BAND || z > ZOOM_BAND) {
+        if (fallbackSet && coverage(fallbackSet, V) > coverage(T0, V)) {
+          dropSet(T0);
+        } else {
+          dropSet(fallbackSet);
+          fallbackSet = T0;
+        }
+        tileSet = { scale, dpr, key, tiles: new Map() };
+      }
+    }
+    const T = tileSet!;
+    const r = tileRange(T, V);
+    const deadline = performance.now() + TILE_BUDGET;
+    const late: [number, number][] = [];
+    let missing = false;
+    for (let j = r.j0; j <= r.j1; j++) {
+      for (let i = r.i0; i <= r.i1; i++) {
+        const t = T.tiles.get(`${i},${j}`);
+        if (t) {
+          if (t.gen !== assetsGen) late.push([i, j]);
+        } else if (overviewReady || (fallbackSet && covers(fallbackSet, T, i, j))) {
+          late.push([i, j]);
+          missing = true;
+        } else {
+          renderTile(T, i, j, S);
+        }
+      }
+    }
+    let left = false;
+    for (const [i, j] of late) {
+      if (performance.now() > deadline) {
+        left = true;
+        break;
+      }
+      renderTile(T, i, j, S);
+    }
+    if (!left && fallbackSet && !missing) {
+      dropSet(fallbackSet);
+      fallbackSet = null;
+    }
+    const ring = tileRange(T, V, 1);
+    if (!left && T.scale === scale) {
+      ahead: for (let j = ring.j0; j <= ring.j1; j++) {
+        for (let i = ring.i0; i <= ring.i1; i++) {
+          const t = T.tiles.get(`${i},${j}`);
+          if (t && t.gen === assetsGen) continue;
+          if (performance.now() > deadline) {
+            left = true;
+            break ahead;
+          }
+          renderTile(T, i, j, S);
+        }
+      }
+    }
+    if (!left) {
+      const b = model!.bounds;
+      overviewSet ??= { scale: OVERVIEW_PX / dpr / Math.max(b.maxX - b.minX, b.maxY - b.minY), dpr, key, tiles: new Map() };
+      const O = overviewSet;
+      const ow = TILE / O.dpr / O.scale;
+      const [i0, i1, j0, j1] = [Math.floor(b.minX / ow), Math.floor(b.maxX / ow), Math.floor(b.minY / ow), Math.floor(b.maxY / ow)];
+      whole: for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) {
+          const t = O.tiles.get(`${i},${j}`);
+          if (t && t.gen === assetsGen) continue;
+          if (performance.now() > deadline) {
+            left = true;
+            break whole;
+          }
+          renderTile(O, i, j, S);
+        }
+      }
+      overviewReady = O.tiles.size === (i1 - i0 + 1) * (j1 - j0 + 1);
+    }
+    const keep = (ring.i1 - ring.i0 + 1) * (ring.j1 - ring.j0 + 1) + 12;
+    if (T.tiles.size > keep) {
+      const mi = (ring.i0 + ring.i1) / 2;
+      const mj = (ring.j0 + ring.j1) / 2;
+      const far = [...T.tiles.entries()].sort(([, a], [, b]) => Math.hypot(b.i - mi, b.j - mj) - Math.hypot(a.i - mi, a.j - mj));
+      for (const [k, t] of far.slice(0, T.tiles.size - keep)) {
+        T.tiles.delete(k);
+        if (spare.length < 64) spare.push({ below: t.below, nodes: t.nodes });
+      }
+    }
+    return left;
   }
 
   function frame() {
@@ -603,31 +758,52 @@
     dirty = false;
     spinning = false;
     queueMicrotask(() => {
-      if (!spinning || !animate || spinTimer) return;
+      if (!spinning || !animate || spinTimer || drag?.moved || zooming) return;
       spinTimer = window.setTimeout(() => {
         spinTimer = 0;
         invalidate();
       }, 50);
     });
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d", { alpha: false })!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const S = scene();
-    const V: View = { cx, cy, w, h };
-    if (!layerUsable(S)) renderLayer(S);
-    const L = layer!;
-    const z = scale / L.scale;
-    const dw = L.w * z;
-    const dh = L.h * z;
-    const dx = (L.cx - cx) * scale + (w - dw) / 2;
-    const dy = (L.cy - cy) * scale + (h - dh) / 2;
+    // Snapped to device pixels so tiles at the view's scale blit unscaled.
+    let V: View = { cx, cy, w, h };
+    if (!zooming) {
+      const ox = Math.round((w / 2 - cx * scale) * dpr) / dpr;
+      const oy = Math.round((h / 2 - cy * scale) * dpr) / dpr;
+      V = { cx: (w / 2 - ox) / scale, cy: (h / 2 - oy) / scale, w, h };
+    }
+    const more = updateTiles(S, V);
+    const T = tileSet!;
+    const F = fallbackSet;
+    const O = overviewReady ? overviewSet : null;
+    const holes: [number, number, number, number][] = [];
+    if (F || O) {
+      const r = tileRange(T, V);
+      for (let j = r.j0; j <= r.j1; j++) for (let i = r.i0; i <= r.i1; i++) if (!T.tiles.has(`${i},${j}`)) holes.push(tileRect(T, V, i, j));
+    }
+    const standIn = (which: "below" | "nodes") => {
+      if (!holes.length) return;
+      ctx.save();
+      ctx.beginPath();
+      for (const [x, y, rw, rh] of holes) ctx.rect(x, y, rw, rh);
+      ctx.clip();
+      if (O) blitTiles(ctx, O, V, which);
+      if (F) blitTiles(ctx, F, V, which);
+      ctx.restore();
+    };
     const H = hoverParts(S, V);
     ctx.fillStyle = palette.bg;
     ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(L.below, 0, 0, L.below.width, L.below.height, dx, dy, dw, dh);
+    standIn("below");
+    blitTiles(ctx, T, V, "below");
     if (H) drawHoverEdges(ctx, V, H);
-    ctx.drawImage(L.nodes, 0, 0, L.nodes.width, L.nodes.height, dx, dy, dw, dh);
+    standIn("nodes");
+    blitTiles(ctx, T, V, "nodes");
     if (H) drawHoverNodes(ctx, S, V, H);
     drawRings(ctx, S, V);
+    if (more) invalidate();
   }
 
   const EDGE_ORDER = ["Normal", "Intermediate", "Set1Path", "Set2Path", "Active", "Set1", "Set2", "CompareGain", "CompareLoss", "Depend"] as const;
@@ -684,10 +860,66 @@
     return map;
   }
 
+  // Nodes and connectors bucketed by area, so a tile only visits what it touches.
+  interface Grid {
+    nodes: TNode[];
+    nodeCells: Map<number, number[]>;
+    edgeCells: Map<number, number[]>;
+    reach: number;
+    glow: number;
+  }
+  const CELL = 1024;
+  const grids = new WeakMap<TreeModel, Grid>();
+  const cellOf = (v: number) => Math.floor(v / CELL);
+  const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
+  function gridOf(M: TreeModel): Grid {
+    const known = grids.get(M);
+    if (known) return known;
+    const put = (cells: Map<number, number[]>, key: number, idx: number) => {
+      let list = cells.get(key);
+      if (!list) cells.set(key, (list = []));
+      list.push(idx);
+    };
+    const g: Grid = { nodes: [...M.nodes.values()], nodeCells: new Map(), edgeCells: new Map(), reach: 0, glow: 0 };
+    g.nodes.forEach((n, idx) => {
+      put(g.nodeCells, cellKey(cellOf(n.x), cellOf(n.y)), idx);
+      g.reach = Math.max(g.reach, nodeReach(n));
+      g.glow = Math.max(g.glow, n.size.effect);
+    });
+    M.edges.forEach((e, idx) => {
+      for (let i = cellOf(e.box[0]); i <= cellOf(e.box[2]); i++) {
+        for (let j = cellOf(e.box[1]); j <= cellOf(e.box[3]); j++) put(g.edgeCells, cellKey(i, j), idx);
+      }
+    });
+    grids.set(M, g);
+    return g;
+  }
+  // In model order, so neighbouring tiles overlap art the same way.
+  function gather(cells: Map<number, number[]>, b: [number, number, number, number], pad: number): number[] {
+    const out: number[] = [];
+    for (let i = cellOf(b[0] - pad); i <= cellOf(b[1] + pad); i++) {
+      for (let j = cellOf(b[2] - pad); j <= cellOf(b[3] + pad); j++) {
+        const list = cells.get(cellKey(i, j));
+        if (list) for (const idx of list) out.push(idx);
+      }
+    }
+    return out.sort((a, b) => a - b);
+  }
+  function nodesNear(M: TreeModel, b: [number, number, number, number], pad: number): TNode[] {
+    const g = gridOf(M);
+    return gather(g.nodeCells, b, pad).map((i) => g.nodes[i]);
+  }
+  function edgesNear(M: TreeModel, b: [number, number, number, number]): TEdge[] {
+    const idx = gather(gridOf(M).edgeCells, b, 0);
+    const out: TEdge[] = [];
+    for (let k = 0; k < idx.length; k++) if (k === 0 || idx[k] !== idx[k - 1]) out.push(M.edges[idx[k]]);
+    return out;
+  }
+
   // The backdrop is fixed to the canvas, so it is tiled once and stamped.
   let backdrop: { canvas: HTMLCanvasElement; gen: number; dpr: number } | null = null;
   const BACKDROP = 1000;
-  function drawBackdrop(ctx: CanvasRenderingContext2D, bw: number, bh: number) {
+  function drawBackdrop(ctx: CanvasRenderingContext2D, bw: number, bh: number, ox: number, oy: number) {
     const A = assets;
     if (!A || !A.has("Background2")) return;
     if (!backdrop || backdrop.gen !== assetsGen || backdrop.dpr !== dpr) {
@@ -699,17 +931,18 @@
       if (!A.tile(bctx, "Background2", BACKDROP, BACKDROP, 100)) return;
       backdrop = { canvas: c, gen: assetsGen, dpr };
     }
-    for (let y = 0; y < bh; y += BACKDROP) {
-      for (let x = 0; x < bw; x += BACKDROP) {
+    // Stamped from the tile grid's origin so it continues across tiles.
+    for (let y = -(((oy % BACKDROP) + BACKDROP) % BACKDROP); y < bh; y += BACKDROP) {
+      for (let x = -(((ox % BACKDROP) + BACKDROP) % BACKDROP); x < bw; x += BACKDROP) {
         ctx.drawImage(backdrop.canvas, 0, 0, backdrop.canvas.width, backdrop.canvas.height, x, y, BACKDROP, BACKDROP);
       }
     }
   }
 
-  function drawBelow(ctx: CanvasRenderingContext2D, S: Scene, V: View) {
+  function drawBelow(ctx: CanvasRenderingContext2D, S: Scene, V: View, ox: number, oy: number) {
     const M = model;
     if (!M) return;
-    const { tx, ty, toScreen, inView, boxInView } = viewMath(V);
+    const { tx, ty, toScreen, inView, boxInView, bounds } = viewMath(V);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "medium";
     ctx.fillStyle = palette.bg;
@@ -718,7 +951,7 @@
     const A = assets;
 
     // --- background tile ---
-    drawBackdrop(ctx, V.w, V.h);
+    drawBackdrop(ctx, V.w, V.h, ox, oy);
 
     // --- PoE1: class illustration, group rings, inactive class starts ---
     if (A && M.poe1) {
@@ -785,7 +1018,7 @@
 
     // --- node glows: mastery and tattoo effects sit under the connectors (PoB layer 15) ---
     if (A && scale > 0.045 && S.heat === null) {
-      for (const n of M.nodes.values()) {
+      for (const n of S.ovAny ? M.nodes.values() : nodesNear(M, bounds, gridOf(M).glow)) {
         if (n.hidden || n.kind === "classStart" || n.kind === "onlyImage") continue;
         const ov = S.ovAny ? S.ov[String(n.id)] : undefined;
         const effect = ov?.effect ?? n.effect;
@@ -811,7 +1044,7 @@
     // --- connectors, batched per state ---
     ctx.lineCap = "round";
     for (const b of edgeBuckets) b.length = 0;
-    for (const e of M.edges) {
+    for (const e of edgesNear(M, bounds)) {
       if (!boxInView(e.box)) continue;
       const a = M.nodes.get(e.a)!;
       const b = M.nodes.get(e.b)!;
@@ -832,14 +1065,14 @@
     const M = model;
     if (!M) return;
     const A = assets;
-    const { tx, ty, inView } = viewMath(V);
+    const { tx, ty, inView, bounds } = viewMath(V);
     const drawEffects = scale > 0.045;
     const heat = S.heat !== null;
     const hoverJewel = S.hover?.kind === "socket" ? S.sockets.get(S.hover.id) : undefined;
     const hoverSocketSet = hoverJewel?.radiusIndex ? (socketRadius.get(S.hover!.id) ?? null) : null;
     const hoverSocketColor = hoverJewel?.radiusIndex ? pobColor(S.radii[hoverJewel.radiusIndex - 1]?.color ?? "") : palette.search;
     for (const d of dots) d.length = 0;
-    for (const n of M.nodes.values()) {
+    for (const n of nodesNear(M, bounds, gridOf(M).reach)) {
       if (n.hidden || n.kind === "classStart") continue;
       if (!inView(n.x, n.y, nodeReach(n))) continue;
       const sx = tx(n.x);
@@ -1127,7 +1360,9 @@
       // Allocated S.sockets with a jewel show their radius persistently: PoB's
       // shaded rings, or a timeless jewel's own pair, turning slowly against
       // each other (DrawImageRotated: angle × ms × 0.00003).
-      const t = animate ? performance.now() * 0.00003 : 0;
+      // They hold still while the view moves, so a pan reuses their cached art.
+      if (animate && !drag?.moved && !zooming) ringTime = performance.now() * 0.00003;
+      const t = animate ? ringTime : 0;
       const spin = (name: string, sx: number, sy: number, half: number, speed: number) => {
         if (!A || half <= 0) return false;
         ctx.save();
@@ -1136,6 +1371,39 @@
         const ok = A.draw(ctx, name, 0, 0, half, half);
         ctx.restore();
         return ok;
+      };
+      const spinSet = (id: string, parts: [string, number, number][], sx: number, sy: number, outer: number) => {
+        if (!A || outer <= 0) return false;
+        const size = Math.ceil(outer * 2 * dpr) + 2;
+        if (size > 1600) {
+          let ok = false;
+          for (const [name, half, speed] of parts) ok = spin(name, sx, sy, half, speed) || ok;
+          return ok;
+        }
+        const key = `${parts.map((p) => `${p[0]}:${p[1]}`).join("|")}:${t}:${assetsGen}:${dpr}`;
+        let entry = ringCache.get(id);
+        if (!entry || entry.key !== key) {
+          const c = entry?.canvas ?? document.createElement("canvas");
+          if (c.width !== size) {
+            c.width = size;
+            c.height = size;
+          }
+          const rc = c.getContext("2d")!;
+          rc.setTransform(1, 0, 0, 1, 0, 0);
+          rc.clearRect(0, 0, size, size);
+          rc.setTransform(dpr, 0, 0, dpr, size / 2, size / 2);
+          let ok = true;
+          for (const [name, half, speed] of parts) {
+            rc.save();
+            rc.rotate(speed * t);
+            ok = A.draw(rc, name, 0, 0, half, half) && ok;
+            rc.restore();
+          }
+          entry = { canvas: c, key: ok ? key : "" };
+          ringCache.set(id, entry);
+        }
+        ctx.drawImage(entry.canvas, sx - size / 2 / dpr, sy - size / 2 / dpr, size / dpr, size / dpr);
+        return entry.key !== "";
       };
       // From Nothing and Impossible Escape put their ring on the keystones they
       // name, not on their socket (PassiveTreeView.drawJewelRadius). Null means
@@ -1172,18 +1440,20 @@
           const sx = tx(c.x);
           const sy = ty(c.y);
           const outer = rad.outer * scale;
-          let drew: boolean;
-          if (rings) {
-            drew = spin(rings[0], sx, sy, outer, -0.7);
-            spin(rings[1], sx, sy, outer, 0.7);
-          } else if (A?.has("ShadedOuterRing")) {
-            drew = spin("ShadedOuterRing", sx, sy, outer, -0.7);
-            spin("ShadedOuterRingFlipped", sx, sy, outer, 0.7);
-            spin("ShadedInnerRing", sx, sy, inner, -0.7);
-            spin("ShadedInnerRingFlipped", sx, sy, inner, 0.7);
-          } else {
-            drew = false;
-          }
+          const parts: [string, number, number][] | null = rings
+            ? [
+                [rings[0], outer, -0.7],
+                [rings[1], outer, 0.7],
+              ]
+            : A?.has("ShadedOuterRing")
+              ? [
+                  ["ShadedOuterRing", outer, -0.7],
+                  ["ShadedOuterRingFlipped", outer, 0.7],
+                  ["ShadedInnerRing", inner, -0.7],
+                  ["ShadedInnerRingFlipped", inner, 0.7],
+                ]
+              : null;
+          const drew = parts ? spinSet(`${nodeId}:${c.x}:${c.y}`, parts, sx, sy, outer) : false;
           if (drew) spinning = true;
           else ring(sx, sy, radius, "#e6e6ea", 0.25, 1);
         }
@@ -1453,14 +1723,13 @@
   }
 
   function onPointerMove(e: PointerEvent) {
-    const rect = canvas!.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    mouse = { x: sx, y: sy };
     if (drag) {
       const dx = e.clientX - drag.sx;
       const dy = e.clientY - drag.sy;
-      if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+      if (!drag.moved && Math.abs(dx) + Math.abs(dy) > 4) {
+        drag.moved = true;
+        setHover(null);
+      }
       if (drag.moved) {
         cx = drag.cx0 - dx / scale;
         cy = drag.cy0 - dy / scale;
@@ -1468,6 +1737,10 @@
       }
       return;
     }
+    const rect = canvas!.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    mouse = { x: sx, y: sy };
     if (!index) return;
     const [wx, wy] = toWorld(sx, sy);
     setHover(index.nearest(wx, wy));
@@ -1510,6 +1783,7 @@
     const wasClick = !drag.moved;
     const button = drag.button;
     drag = null;
+    if (!wasClick) invalidate();
     if (!wasClick || !hover || build.busy > 0) return;
     const n = hover;
     if (button === 0 && shiftDown && trace.length) {

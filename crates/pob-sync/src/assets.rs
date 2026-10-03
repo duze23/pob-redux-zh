@@ -175,7 +175,7 @@ fn mask_round(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32) {
 
 /// Node icon sheets: every rect in them is drawn inside a circle.
 fn is_icon_sheet(base: &str) -> bool {
-    base.starts_with("skills")
+    base.starts_with("skills") || (base.starts_with("mastery") && !base.starts_with("mastery-active-effect"))
 }
 
 /// 1/`f` size by block average, alpha-weighted so masked-out pixels do not darken edges.
@@ -373,14 +373,20 @@ pub fn build_sprites(src_tree: &Path, dest_tree: &Path, version: &str) -> Result
     let num = |r: &serde_json::Value, k: &str| r.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0).round() as u32;
     // An icon sheet is masked before it is written, so all of its rects are needed first.
     let mut icon_rects: BTreeMap<&str, BTreeSet<Rect>> = BTreeMap::new();
+    let mut largest: BTreeMap<&str, u32> = BTreeMap::new();
     for sheet in sections.values() {
         let Some(basename) = sheet.get("filename").and_then(|v| v.as_str()).map(sheet_basename) else { continue };
-        if !is_icon_sheet(basename) {
-            continue;
-        }
-        let set = icon_rects.entry(basename).or_default();
-        for rect in sheet.get("coords").and_then(|v| v.as_object()).into_iter().flatten().map(|(_, r)| r) {
-            set.insert((num(rect, "x"), num(rect, "y"), num(rect, "w"), num(rect, "h")));
+        let rects: Vec<Rect> = sheet
+            .get("coords")
+            .and_then(|v| v.as_object())
+            .into_iter()
+            .flatten()
+            .map(|(_, r)| (num(r, "x"), num(r, "y"), num(r, "w"), num(r, "h")))
+            .collect();
+        let most = largest.entry(basename).or_default();
+        *most = rects.iter().map(|r| r.2.max(r.3)).fold(*most, u32::max);
+        if is_icon_sheet(basename) {
+            icon_rects.entry(basename).or_default().extend(rects);
         }
     }
     // A bloodline sheet repeats the ascendancy frame names with its own art.
@@ -429,8 +435,8 @@ pub fn build_sprites(src_tree: &Path, dest_tree: &Path, version: &str) -> Result
             }
         } else if !copied.contains_key(&out_name) {
             let out = web.join(&out_name);
+            let mut img = image::open(&src).with_context(|| format!("read {}", src.display()))?.to_rgba8();
             if let Some(rects) = icons {
-                let mut img = image::open(&src).with_context(|| format!("read {}", src.display()))?.to_rgba8();
                 for &(x, y, w, h) in rects {
                     mask_round(&mut img, x, y, w, h);
                 }
@@ -442,6 +448,13 @@ pub fn build_sprites(src_tree: &Path, dest_tree: &Path, version: &str) -> Result
             copied.insert(out_name.clone(), len);
             stats.files += 1;
             stats.bytes += len;
+            let min = if icons.is_some() { 16 } else { 64 };
+            let (list, n, b) = write_lods(&img, largest.get(basename).copied().unwrap_or(0), min, &web, version, &format!("{stem}.webp"))?;
+            stats.files += n;
+            stats.bytes += b;
+            if !list.is_empty() {
+                manifest.lods.insert(format!("TreeData/{version}/web/{out_name}"), list);
+            }
         }
         stats.sheets += 1;
         let file = format!("TreeData/{version}/web/{out_name}");
