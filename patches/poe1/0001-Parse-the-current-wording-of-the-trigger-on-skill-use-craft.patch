@@ -1,0 +1,31 @@
+From 196e1fa8e15f13a6200555a877f94a4e89913a94 Mon Sep 17 00:00:00 2001
+From: Judd <ipajudd@gmail.com>
+Date: Sat, 3 Oct 2026 14:03:42 -0700
+Subject: [PATCH] Parse the current wording of the trigger-on-skill-use craft
+
+The bench craft now reads "Trigger a Socketed Spell on Using a Skill,
+with a 4 second Cooldown". ModParser only knew the older "when you Use a
+Skill, with a 8 second Cooldown" wording, so an imported weapon with the
+craft triggered nothing and its spell's cost and trigger rate were wrong.
+
+Map the new wording to SupportTriggerSpellOnSkillUse. Its level 2 already
+carries the 4 second cooldown; a longer cooldown keeps level 1.
+---
+ src/Modules/ModParser.lua | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/Modules/ModParser.lua b/src/Modules/ModParser.lua
+index bc1f7b973..7ebe973a2 100644
+--- a/src/Modules/ModParser.lua
++++ b/src/Modules/ModParser.lua
+@@ -3194,6 +3194,7 @@ local specialModList = {
+ 	["trigger a socketed spell when you use a skill"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellOnSkillUse", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
+ 	["trigger a socketed spell when you use a skill, with a (%d+) second cooldown"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellOnSkillUse", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
+ 	["trigger a socketed spell when you use a skill, with a (%d+) second cooldown and (%d+)%% more cost"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellOnSkillUse", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
++	["trigger a socketed spell on using a skill, with a (%d+) second cooldown"] = function(num) return { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellOnSkillUse", level = num <= 4 and 2 or 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) } end,
+ 	["trigger socketed spells when you focus"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellFromHelmet", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
+ 	["trigger socketed spells when you focus, with a ([%d%.]+) second cooldown"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellFromHelmet", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
+ 	["trigger a socketed spell when you attack with a bow"] = { mod("ExtraSupport", "LIST", { skillId = "SupportTriggerSpellOnBowAttack", level = 1 }, { type = "SocketedIn", slotName = "{SlotName}" }) },
+-- 
+2.55.0.windows.3
+
