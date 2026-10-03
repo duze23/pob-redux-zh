@@ -1034,6 +1034,8 @@
   "items_in_build": "Items in build",
   "items_equip": "Equip",
   "items_equip_in": "Equip in {slot}",
+  "items_slot_on": "{slot} is active. PoB counts its effect. Click to turn it off.",
+  "items_slot_off": "{slot} is inactive. PoB leaves its effect out. Click to turn it on.",
   "items_delete": "Delete item",
   "items_none": "No items yet.",
   "items_shared": "Shared items",

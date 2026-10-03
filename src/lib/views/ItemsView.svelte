@@ -457,6 +457,11 @@
     build.run(() => engine.equipItem(slot, id));
   }
 
+  function setSlotActive(slot: string, active: boolean) {
+    if (itemBusy) return;
+    build.run(() => engine.setSlotActive(slot, active));
+  }
+
   function selectItem(id: number | null) {
     hideTip();
     selectedItem = id;
@@ -587,8 +592,15 @@
     onmouseenter={(e) => s.itemId !== 0 && showTip(e, `i${s.itemId}`, () => engine.itemTooltip({ itemId: s.itemId }))}
     onmouseleave={hideTip}
   >
-    <span class="sname">{s.label ?? s.slot}</span>
-    <select class="select" value={s.itemId} onchange={(e) => equipSlot(s.slot, e)} disabled={itemBusy} style:color={rarityColor[s.itemRarity ?? ""] ?? undefined}>
+    {#if s.active != null}
+      <label class="sname act" title={s.itemId === 0 ? undefined : (s.active ? m.items_slot_on : m.items_slot_off)({ slot: s.label ?? s.slot })}>
+        <input type="checkbox" checked={s.active} disabled={s.itemId === 0 || itemBusy} onchange={(e) => setSlotActive(s.slot, (e.target as HTMLInputElement).checked)} />
+        {s.label ?? s.slot}
+      </label>
+    {:else}
+      <span class="sname">{s.label ?? s.slot}</span>
+    {/if}
+    <select class="select" class:off={s.active === false && s.itemId !== 0} value={s.itemId} onchange={(e) => equipSlot(s.slot, e)} disabled={itemBusy} style:color={rarityColor[s.itemRarity ?? ""] ?? undefined}>
       <option value={0}>—</option>
       {#each items.filter((it) => it.compatibleSlots.includes(s.slot)) as it}
         <option value={it.id}>{it.name}</option>
@@ -651,6 +663,7 @@
       <div class="scroll">
         <EquipmentGrid slots={slotsResp?.slots ?? []} {items} game={game.current} groups={build.skills?.socketGroups ?? []} {selectedItem}
           onselect={selectItem}
+          onactive={setSlotActive}
           onitemhover={(event, id) => showTip(event, `i${id}`, () => engine.itemTooltip({ itemId: id }))}
           ongemhover={(event, group, gem) => showTip(event, `g${group}:${gem}`, () => engine.gemTooltip(group, gem))}
           onleave={hideTip} />
@@ -1038,6 +1051,18 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .sname.act {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sname.act input {
+    flex-shrink: 0;
+    margin: 0;
+  }
+  .slot .select.off {
+    opacity: 0.5;
   }
   .item {
     display: grid;

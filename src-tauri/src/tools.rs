@@ -35,7 +35,7 @@ for a route — it takes an objective (defence, damage, speed, attributes, or a 
 point budget, so \"path to X optimising for defence\" is one call — and alloc_path to take it. Most of this \
 tree is attribute nodes, so call set_attribute_choice (1 Str, 2 Dex, 3 Int) before pathing when the user \
 says which they want. Change the build with alloc_node / dealloc_node / select_class / set_level, \
-equip_item_raw / unequip_item, add_gem / set_gem / remove_gem / set_main_skill, and set_config. For better \
+equip_item_raw / unequip_item / set_flask_active, add_gem / set_gem / remove_gem / set_main_skill, and set_config. For better \
 gear, optimise_gear searches the real mod pool for every slot and scores each candidate with PoB, keeping \
 resistances capped; apply its proposals with `apply` or equip_item_raw. For unique jewels, suggest_unique_jewels \
 scores every one PoB knows in every allocated socket, variants included, and ranks them; equip a pick with \
@@ -62,7 +62,7 @@ ones per point plus the weakest allocated ones. To reach a notable, find it with
 for a route — it takes an objective (defence, damage, speed, attributes, or a stat substring) and a max_extra \
 point budget, so \"path to X optimising for defence\" is one call — and alloc_path to take it. A mastery needs \
 an effect: node_info lists them, and alloc_node takes the chosen one as `effect`. Change the build with \
-alloc_node / dealloc_node / select_class / set_level, equip_item_raw / unequip_item, add_gem / set_gem / \
+alloc_node / dealloc_node / select_class / set_level, equip_item_raw / unequip_item / set_flask_active, add_gem / set_gem / \
 remove_gem / set_main_skill, and set_config, which also holds the bandit and pantheon choices. For better \
 gear, optimise_gear searches the real mod pool for every slot and scores each candidate with PoB, keeping \
 resistances capped; apply its proposals with `apply` or equip_item_raw. For unique jewels, suggest_unique_jewels \
@@ -423,7 +423,7 @@ setting for the whole tree. It applies to nodes allocated from then on, so set i
         rw("rename_spec", "Rename a tree spec.", obj(json!({ "index": index("spec"), "title": title() }), &["index", "title"])).no_output_schema().idempotent(),
         del("delete_spec", "Delete a tree spec. Fails if it is the only one.", obj(json!({ "index": index("spec") }), &["index"])),
         // Items
-        ro("get_items", "Every visible equipment, flask, charm and jewel slot with the item in it (if any). Hidden and inactive slots are left out.", none()),
+        ro("get_items", "Every visible equipment, flask, charm and jewel slot with the item in it (if any). Hidden and inactive slots are left out. Flask and charm slots carry `active`: PoB applies the item's effect only while it is true (set_flask_active).", none()),
         ro("list_items", "Every item the build owns, equipped or not, with its id and slot.", none()),
         rw(
             "equip_item_raw",
@@ -432,6 +432,11 @@ setting for the whole tree. It applies to nodes allocated from then on, so set i
         ),
         rw("equip_item", "Equip an item the build already owns (see list_items) into a slot.", obj(json!({ "item_id": prop("integer", "Item id from list_items"), "slot": prop("string", "Slot name from get_items") }), &["item_id", "slot"])).idempotent(),
         rw("unequip_item", "Empty a slot. The item stays in the build's item list.", obj(json!({ "slot": prop("string", "Slot name from get_items") }), &["slot"])).idempotent(),
+        rw(
+            "set_flask_active",
+            "Turn an equipped flask or charm on or off, like the checkbox beside its slot in PoB's Items tab. PoB applies its effect only while it is active, and a build can arrive with all of them off. To compare two flasks, equip each and turn it on.",
+            obj(json!({ "slot": prop("string", "Slot name from get_items"), "active": prop("boolean", "true to apply its effect, false to leave it out") }), &["slot", "active"]),
+        ).idempotent(),
         del("delete_item", "Remove an item from the build entirely.", obj(json!({ "item_id": prop("integer", "Item id from list_items") }), &["item_id"])),
         ro(
             "search_item_db",
@@ -663,7 +668,8 @@ const POE1_TEXT: &[(&str, &str)] = &[
     ("set_gem_levels", "Lower every gem, supports included, that the character's level cannot use to the highest level it can, from each gem level's own level requirement. Gems the level allows stay as they are, corrupted level 21 gems included. Call this after set_level on a levelling build."),
     ("list_gems", "Find gem ids for add_gem. Matches the query against display names and ids. Returns `req_level` (the character level the gem needs at gem level 1), `gem_level` (the highest gem level the character's level allows), `req_str` / `req_dex` / `req_int` (what that gem level asks of the character, by PoB's formula) and `attr` (the gem's colour). Legacy gems are left out, as in PoB's gem list. **Gems above the open build's level are excluded by default** — set max_level to 0 to see them all, or to a number to plan for a future level. `short_by` names any attribute the build is missing."),
     ("list_valid_supports", "Support gems PoB considers valid for a group's main active skill, excluding any above the character's level and legacy gems. Each carries its req_level, `attr` (its colour) and whether it is already `socketed`. With `sort_by_dps`, PoB scores each one as if added to the group and returns `dps_delta` (CombinedDPS change, best first; takes about a second), which is how to choose supports on a damage skill. Each support has its own attribute requirement by gem level; the character needs the highest single source, never the sum. `requirements` reports need, have and the binding source for each attribute."),
-    ("get_items", "Every visible equipment, flask and jewel slot with the item in it (if any). Hidden and inactive slots are left out."),
+    ("get_items", "Every visible equipment, flask and jewel slot with the item in it (if any). Hidden and inactive slots are left out. Flask slots carry `active`: PoB applies the flask's effect only while it is true (set_flask_active)."),
+    ("set_flask_active", "Turn an equipped flask on or off, like the checkbox beside its slot in PoB's Items tab. PoB applies its effect only while it is active, and a build can arrive with all of them off. To compare two flasks, equip each and turn it on."),
     ("list_classes", "Every class and its ascendancies, and the bloodlines (`secondaryAscendancies`), with ids for select_class."),
     ("select_class", "Change class, ascendancy and/or bloodline. Omit an id to leave it unchanged. Changing class deallocates nodes the new class cannot reach. An invalid id leaves the build untouched."),
     ("list_bases", "Item bases of one type with the numbers that decide between them: weapon damage, attack rate and crit; armour, evasion and energy shield; requirements; implicit. `type` is a family (Boots, Helmet, Ring, Two Hand Mace) or a typed list (Boots: Armour); omit it for the list of types. The best endgame bases are usually the highest requirement ones."),
@@ -1145,6 +1151,10 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
             json!({ "itemId": req_i64(args, "item_id")?, "slot": req_str(args, "slot")? }),
         )?),
         "unequip_item" => stats(ctx.call("unequip_item", json!({ "slot": req_str(args, "slot")? }))?),
+        "set_flask_active" => {
+            let active = arg_bool(args, "active").ok_or_else(|| ToolError::Invalid("active must be true or false".into()))?;
+            stats(ctx.call("set_slot_active", json!({ "slot": req_str(args, "slot")?, "active": active }))?)
+        }
         "delete_item" => stats(ctx.call("delete_item", json!({ "itemId": req_i64(args, "item_id")? }))?),
         "search_item_db" => read(ctx.call(
             "item_db_list",
@@ -1392,7 +1402,7 @@ mod tests {
     #[test]
     fn poe1_registry_speaks_poe1() {
         let d = defs(Game::Poe1);
-        assert_eq!(d.len(), 75, "PoE1 tool count changed");
+        assert_eq!(d.len(), 76, "PoE1 tool count changed");
         for (name, _) in POE1_TEXT {
             assert!(d.iter().any(|t| t.name == *name), "POE1_TEXT names {name}, which is not a tool");
         }
@@ -1410,7 +1420,7 @@ mod tests {
     #[test]
     fn registry_is_stable_and_measured() {
         let d = defs(Game::Poe2);
-        assert_eq!(d.len(), 76, "tool count changed");
+        assert_eq!(d.len(), 77, "tool count changed");
 
         let mut names: Vec<&str> = d.iter().map(|t| t.name).collect();
         names.sort_unstable();

@@ -5,9 +5,10 @@
   import { socketArtUrls } from "$lib/item-art";
   import ItemIcon from "./ItemIcon.svelte";
 
-  let { slots, items, game, groups = [], selectedItem, onselect, onitemhover, ongemhover, onleave }:
+  let { slots, items, game, groups = [], selectedItem, onselect, onactive, onitemhover, ongemhover, onleave }:
     { slots: SlotInfo[]; items: ItemInfo[]; game: "poe1" | "poe2"; groups?: SocketGroup[]; selectedItem: number | null;
-      onselect: (id: number) => void; onitemhover: (event: MouseEvent | FocusEvent, itemId: number) => void;
+      onselect: (id: number) => void; onactive?: (slot: string, active: boolean) => void;
+      onitemhover: (event: MouseEvent | FocusEvent, itemId: number) => void;
       ongemhover: (event: MouseEvent | FocusEvent, group: number, gem: number) => void; onleave: () => void } = $props();
   let keyboardSlot = $state<string | null>(null);
   const visible = $derived(visibleEquipment(slots));
@@ -42,7 +43,7 @@
   {@const item = byId.get(slot.itemId)}
   {@const sockets = item?.sockets ?? []}
   {@const gems = game === "poe1" ? socketedGems(slot.slot, sockets, groups) : []}
-  <div class="cell" class:occupied={!!item} class:selected={!!item && selectedItem === item.id} class:keyboard={keyboardSlot === slot.slot}
+  <div class="cell" class:occupied={!!item} class:off={!!item && slot.active === false} class:selected={!!item && selectedItem === item.id} class:keyboard={keyboardSlot === slot.slot}
     onfocusin={(event) => { if ((event.target as HTMLElement).matches(":focus-visible")) keyboardSlot = slot.slot; }}
     onfocusout={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) keyboardSlot = null; }}
     style:grid-area={equipmentArea(slot.slot)} style:--rarity={rarity[item?.rarity ?? ""] ?? "var(--line-1)"}>
@@ -57,6 +58,11 @@
         <span class="empty">{slot.label ?? slot.slot}</span>
       {/if}
     </button>
+    {#if item && slot.active != null && onactive}
+      {@const tip = (slot.active ? m.items_slot_on : m.items_slot_off)({ slot: slot.label ?? slot.slot })}
+      <button class="act" class:on={slot.active} aria-pressed={slot.active} aria-label={tip} title={tip}
+        onclick={() => onactive(slot.slot, !slot.active)}></button>
+    {/if}
     {#if item}
       {#if game === "poe1" && sockets.length}
         {@const height = Math.ceil(sockets.length / 2) * 24}
@@ -134,6 +140,12 @@
   .gear:disabled { cursor: default; }
   .gear:focus-visible, .gem:focus-visible { outline: 2px solid var(--fg-0); outline-offset: 2px; }
   .empty { font-size: 9px; line-height: 1.2; overflow-wrap: anywhere; opacity: 0.55; }
+  .cell.off .gear { opacity: 0.4; filter: grayscale(1); }
+  .act { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 12px; height: 12px; padding: 0; border: 1px solid var(--line-2); border-radius: 2px; background: var(--bg-0); }
+  .act.on { border-color: var(--ok); background: var(--ok); box-shadow: inset 0 0 0 2px var(--bg-0); }
+  .act:hover { border-color: var(--fg-2); }
+  .act.on:hover { border-color: var(--ok); }
+  .act:focus-visible { outline: 2px solid var(--fg-0); outline-offset: 2px; }
   .socket-overlay { opacity: 0; visibility: hidden; pointer-events: none; }
   .cell:hover .socket-overlay, .cell.keyboard .socket-overlay { opacity: 1; visibility: visible; }
   .sockets { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(64px, calc(100% - 6px)); filter: drop-shadow(0 1px 2px #000); }

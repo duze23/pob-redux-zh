@@ -2879,6 +2879,8 @@ M.list_slots = function()
 			local ok, s = pcall(slot.shown)
 			shown = ok and s and true or false
 		end
+		local active = null
+		if slot.controls and slot.controls.activate then active = slot.active == true end
 		slots[#slots + 1] = {
 			slot = slot.slotName,
 			label = opt(slot.label),
@@ -2889,6 +2891,7 @@ M.list_slots = function()
 			weaponSet = opt(slot.weaponSet),
 			shown = shown,
 			inactive = slot.inactive == true,
+			active = active,
 		}
 	end
 	return {
@@ -3002,6 +3005,22 @@ end
 
 M.unequip_item = function(p)
 	return M.equip_item({ slot = p and p.slot, itemId = 0 })
+end
+
+M.set_slot_active = function(p)
+	ensureBuild()
+	local slot = build.itemsTab.slots[resolveSlotName(p and p.slot) or ""]
+	if not slot or not (slot.controls and slot.controls.activate) then
+		error(tostring(p and p.slot) .. " is not a flask or charm slot", 0)
+	end
+	if type(p.active) ~= "boolean" then error("params.active (true or false) is required", 0) end
+	if not slot.selItemId or slot.selItemId == 0 then error(slot.slotName .. " is empty", 0) end
+	slot.active = p.active
+	slot.controls.activate.state = p.active
+	build.itemsTab.activeItemSet[slot.slotName].active = p.active
+	build.itemsTab:AddUndoState()
+	refresh()
+	return M.list_slots()
 end
 
 M.delete_item = function(p)

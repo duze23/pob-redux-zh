@@ -946,6 +946,8 @@ export interface SlotInfo {
   weaponSet: number | null;
   shown: boolean;
   inactive: boolean;
+  /** Flask and charm slots only: PoB applies the item's effect only while this is true. */
+  active: boolean | null;
 }
 
 export interface SlotsResponse {
@@ -1629,6 +1631,7 @@ export const engine = {
   getItems: () => call<{ items: ItemInfo[] }>("get_items"),
   equipItemRaw: (text: string, slot?: string, generation?: number) => call<{ ok: boolean; itemId: number; slot: string; itemName: string }>("equip_item_raw", { text, slot, generation }),
   equipItem: (slot: string, itemId: number) => call<SlotsResponse>("equip_item", { slot, itemId }),
+  setSlotActive: (slot: string, active: boolean) => call<SlotsResponse>("set_slot_active", { slot, active }),
   deleteItem: (itemId: number) => call<{ items: ItemInfo[] }>("delete_item", { itemId }),
   itemDbList: (opts: { db: "unique" | "rare"; query?: string; type?: string; limit?: number; offset?: number }) =>
     call<{ items: ItemDbRow[]; total: number; offset: number; types: { type: string; count: number }[] }>("item_db_list", opts),

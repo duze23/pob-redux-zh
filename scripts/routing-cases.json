@@ -42,6 +42,9 @@
   { "q": "remove the item in my offhand slot", "need": ["unequip_item"], "ok": [] },
   { "q": "empty the second ring slot so I can compare", "need": ["unequip_item"], "ok": [] },
 
+  { "q": "turn on my granite flask", "need": ["set_flask_active"], "ok": ["get_items"] },
+  { "q": "is my second charm actually counted? switch it off and see what changes", "need": ["set_flask_active"], "ok": ["get_items"] },
+
   { "q": "what does Astramentis do?", "need": ["search_item_db"], "ok": [] },
   { "q": "find unique amulets that give spirit", "need": ["search_item_db"], "ok": [] },
   { "q": "is there a unique helmet with energy shield and mana regen?", "need": ["search_item_db"], "ok": [] },

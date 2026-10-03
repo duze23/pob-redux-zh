@@ -62,6 +62,7 @@ export const ALLOWED = new Set([
   "optimise_gear",
   "set_gem_levels",
   "unequip_item",
+  "set_flask_active",
   "rollback",
   // Removing a whole skill setup is what "get rid of that skill" means, and
   // the approval gate plus checkpoint cover the missing undo.
