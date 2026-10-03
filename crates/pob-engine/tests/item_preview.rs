@@ -358,7 +358,7 @@ fn customization_edits_drafts_and_commits_saved_items() {
     let options = engine
         .call(
             "item_modifier_options",
-            &json!({"raw":data["raw"],"source":"Prefix","query":"maximum Life"}),
+            &json!({"raw":data["raw"],"source":"PREFIX","query":"maximum Life"}),
         )
         .unwrap();
     let option = &options["options"][0]["id"];
@@ -366,7 +366,7 @@ fn customization_edits_drafts_and_commits_saved_items() {
     data = engine
         .call(
             "item_customize",
-            &json!({"raw":data["raw"],"operation":"add_modifier","modId":option}),
+            &json!({"raw":data["raw"],"operation":"add_modifier","source":"PREFIX","modId":option,"label":options["options"][0]["label"]}),
         )
         .unwrap();
     assert_eq!(snapshot(&engine), before);
