@@ -48,12 +48,9 @@
     const q = filter.trim().toLowerCase();
     const out: { name: string; items: ConfigOption[] }[] = [];
     for (const o of options) {
-      if (q && !`${o.label ?? ""} ${o.var}`.toLowerCase().includes(q)) continue;
-      // Hide options PoB would hide for this build, but never hide a set one.
-      if (relevantOnly && !q && visibility && !visibility[o.var]) {
-        const v = config[o.var];
-        if (v === undefined || v === null || v === false) continue;
-      }
+      if (q && !`${o.group ?? ""} ${o.label ?? ""} ${o.var}`.toLowerCase().includes(q)) continue;
+      // Hide options PoB would hide for this build, but never hide one the user changed.
+      if (relevantOnly && !q && visibility && !visibility[o.var] && !isChanged(o, config[o.var])) continue;
       const name = o.section ?? m.config_section_general();
       let s = out.find((x) => x.name === name);
       if (!s) out.push((s = { name, items: [] }));
@@ -81,7 +78,9 @@
   function toggleAll() {
     saveCollapsed(allCollapsed ? new Set() : new Set(allNames));
   }
-  const isSet = (v: unknown) => v !== undefined && v !== null && v !== false;
+  // PoB writes each option's default into the config, and an unticked box is stored as nil.
+  const norm = (v: unknown) => (v === undefined || v === null || v === false ? null : String(v));
+  const isChanged = (o: ConfigOption, v: unknown) => norm(v) !== norm(o.defaultState);
 
   // PoB pads some list labels with spaces and then search keywords, which its narrow dropdown clips off.
   function listLabel(label: string | null | undefined): string {
@@ -232,7 +231,7 @@
     {/if}
     <div class="cards">
       {#each sections as sec (sec.name)}
-        {@const changed = sec.items.filter((o) => isSet(config[o.var])).length}
+        {@const changed = sec.items.filter((o) => isChanged(o, config[o.var])).length}
         <section class="card">
           <button class="chead" aria-expanded={!collapsed.has(sec.name)} onclick={() => toggle(sec.name)}>
             <span class="caret" class:open={!collapsed.has(sec.name)}>▸</span>
@@ -242,9 +241,12 @@
           </button>
           {#if !collapsed.has(sec.name)}
             <div class="items">
-              {#each sec.items as o (o.var)}
+              {#each sec.items as o, i (o.var)}
                 {@const v = config[o.var]}
-                <label class="opt" class:set={isSet(v)} title={o.tooltip ?? undefined}>
+                {#if o.group && o.group !== sec.items[i - 1]?.group}
+                  <div class="ogroup"><PobText text={o.group.replace(/:\s*$/, "")} /></div>
+                {/if}
+                <label class="opt" class:set={isChanged(o, v)} title={o.tooltip ?? undefined}>
                   <span class="olabel"><PobText text={o.label ?? o.var} /></span>
                   {#if o.type === "check"}
                     <input type="checkbox" checked={v === true} onchange={(e) => set(o, (e.target as HTMLInputElement).checked ? true : null)} />
@@ -497,6 +499,14 @@
   .opt input[type="text"],
   .opt input[type="number"] {
     cursor: text;
+  }
+  .ogroup {
+    padding: 10px 12px 2px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--fg-3);
   }
   .olabel {
     min-width: 0;

@@ -6642,18 +6642,21 @@ M.list_config_options = function()
 	if not configOptionsCache then
 		local varList = LoadModule("Modules/ConfigOptions")
 		local options = array({})
-		local section = null
+		local section, group = null, null
 		for _, o in ipairs(varList) do
 			if o.section then
-				section = o.section
+				section, group = o.section, null
 			elseif o.var then
+				local default = o.defaultState
+				if o.defaultIndex and o.list and o.list[o.defaultIndex] then default = o.list[o.defaultIndex].val end
 				local entry = {
 					var = o.var,
 					label = opt(o.label),
 					type = opt(o.type),
 					section = section,
+					group = group,
 					tooltip = opt(o.tooltip),
-					defaultState = opt(o.defaultState),
+					defaultState = (default ~= nil and isScalar(default)) and default or null,
 					ifSkill = o.ifSkill and (type(o.ifSkill) == "table" and strArray(o.ifSkill) or o.ifSkill) or null,
 					ifFlag = o.ifFlag and (type(o.ifFlag) == "table" and strArray(o.ifFlag) or o.ifFlag) or null,
 					ifCond = o.ifCond and (type(o.ifCond) == "table" and strArray(o.ifCond) or o.ifCond) or null,
@@ -6667,6 +6670,8 @@ M.list_config_options = function()
 					entry.list = list
 				end
 				options[#options + 1] = entry
+			elseif o.label then
+				group = o.label
 			end
 		end
 		configOptionsCache = { options = options }

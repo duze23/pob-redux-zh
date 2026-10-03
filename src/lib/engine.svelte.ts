@@ -1151,6 +1151,7 @@ export interface ConfigOption {
   label: string | null;
   type: "check" | "count" | "list" | "text" | "integer" | string | null;
   section: string | null;
+  group: string | null;
   tooltip: string | null;
   defaultState: unknown;
   list?: { val: unknown; label: string }[];
