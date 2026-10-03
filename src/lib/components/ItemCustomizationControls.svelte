@@ -28,7 +28,7 @@
     onpendingchange(false);
   }
 
-  let source = $state<"Custom" | "Prefix" | "Suffix">("Custom");
+  let source = $state<"Custom" | "Crafted" | "Prefix" | "Suffix">("Custom");
   let query = $state("");
   let customText = $state("");
   let options = $state<{ id: string; label: string; level: number }[]>([]);
@@ -43,7 +43,7 @@
   });
 
   $effect(() => {
-    if (data.affixes.crafted) source = "Custom";
+    if ((data.affixes.crafted && source !== "Crafted") || (!data.benchCrafts && source === "Crafted")) source = "Custom";
   });
 
   $effect(() => {
@@ -162,6 +162,9 @@
       <div class="label">{m.items_add_modifier()}</div>
       <select class="select" aria-label={m.items_modifier_source()} bind:value={source}>
         <option value="Custom">{m.items_custom_modifier()}</option>
+        {#if data.benchCrafts}
+          <option value="Crafted">{m.items_crafting_bench()}</option>
+        {/if}
         {#if !data.affixes.crafted}
           <option value="Prefix">{m.items_prefixes()}</option>
           <option value="Suffix">{m.items_suffixes()}</option>

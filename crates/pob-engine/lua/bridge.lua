@@ -5439,8 +5439,8 @@ end
 do
 	local lineTables = { explicit = "explicitModLines", implicit = "implicitModLines", enchant = "enchantModLines" }
 	local function editableModifier(item, section, line)
-		-- Craft() overwrites non-custom explicit lines from affix definitions.
-		return not line.rune and not (item.crafted and section == "explicit" and not line.custom)
+		-- Craft() overwrites explicit lines from affix definitions, keeping custom and bench lines.
+		return not line.rune and not (item.crafted and section == "explicit" and not line.custom and not line.crafted)
 	end
 	local function ranged(line)
 		return not line.extra and type(line.range) ~= "table" and line.line:match("%(%-?[%d%.]+%-%-?[%d%.]+%)") ~= nil
@@ -5474,22 +5474,55 @@ do
 			anoints = M.item_anoints(p), corruptions = M.item_corruptions(p),
 			enchantable = M.item_enchants(p).available,
 			canCopyAnoints = item.canBeAnointed == true or item.base.type == "Amulet",
-			canCopyAugments = IS_POE2 and (item.base.socketLimit or 0) > 0 }
+			canCopyAugments = IS_POE2 and (item.base.socketLimit or 0) > 0,
+			benchCrafts = #M._benchMods(item) > 0 }
+	end
+
+	-- PoB's Crafting Bench list skips mod groups the item's generated affixes already use.
+	M._benchMods = function(item)
+		local found = {}
+		local master = build.data.masterMods
+		if not master or not item.type or item.type == "Jewel" or item.type == "Tincture" or item.type == "Graft" then return found end
+		local taken = {}
+		if item.crafted and item.affixes then
+			for _, list in ipairs({ item.prefixes or {}, item.suffixes or {} }) do
+				for _, slot in ipairs(list) do
+					local mod = slot.modId and slot.modId ~= "None" and item.affixes[slot.modId]
+					if mod and mod.group then taken[mod.group] = true end
+				end
+			end
+		end
+		for i, craft in ipairs(master) do
+			if craft.types and craft.types[item.type] and not taken[craft.group] then found[#found + 1] = i end
+		end
+		return found
 	end
 
 	M.item_modifier_options = function(p)
 		local item = requireItem(p)
 		local result = array({})
-		local source = p.source == "Suffix" and "Suffix" or "Prefix"
 		local query = tostring(p.query or ""):lower()
+		local function matches(label)
+			for word in query:gmatch("%S+") do
+				if not label:lower():find(word, 1, true) then return false end
+			end
+			return true
+		end
+		if p.source == "Crafted" then
+			for _, i in ipairs(M._benchMods(item)) do
+				local craft = build.data.masterMods[i]
+				local label = table.concat(craft, " / ") .. " (" .. craft.type .. ")"
+				if matches(label) then result[#result + 1] = { id = "bench:" .. i, label = label, level = craft.level or 0 } end
+			end
+			local total = #result
+			while #result > 100 do table.remove(result) end
+			return { options = result, total = total }
+		end
+		local source = p.source == "Suffix" and "Suffix" or "Prefix"
 		for id, mod in pairs(item.affixes or {}) do
 			if mod.type == source and item:GetModSpawnWeight(mod) > 0 then
 				local label = table.concat(mod, " / ")
-				local match = true
-				for word in query:gmatch("%S+") do
-					if not label:lower():find(word, 1, true) then match = false; break end
-				end
-				if match then result[#result + 1] = { id = id, label = label, level = mod.level or 0 } end
+				if matches(label) then result[#result + 1] = { id = id, label = label, level = mod.level or 0 } end
 			end
 		end
 		table.sort(result, function(a, b) return a.label == b.label and a.id < b.id or a.label < b.label end)
@@ -5536,7 +5569,14 @@ do
 				item.itemSocketCount = count
 				item:UpdateRunes()
 			elseif p.operation == "add_modifier" then
-				if p.modId then
+				local bench = type(p.modId) == "string" and tonumber(p.modId:match("^bench:(%d+)$"))
+				if bench then
+					local craft = build.data.masterMods and build.data.masterMods[bench]
+					if not craft or not craft.types or not craft.types[item.type] then error("modifier is not compatible with this item", 0) end
+					for _, line in ipairs(craft) do
+						table.insert(item.explicitModLines, { line = line, modTags = craft.modTags, crafted = true, range = main.defaultItemAffixQuality or 0.5 })
+					end
+				elseif p.modId then
 					local mod = item.affixes and item.affixes[p.modId]
 					if not mod or (mod.type ~= "Prefix" and mod.type ~= "Suffix") or item:GetModSpawnWeight(mod) <= 0 then
 						error("modifier is not compatible with this item", 0)

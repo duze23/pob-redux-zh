@@ -1139,6 +1139,7 @@ export interface ItemCustomization {
   runeSocketLimit: number;
   canCopyAnoints: boolean;
   canCopyAugments: boolean;
+  benchCrafts: boolean;
   affixes: ItemAffixes;
   runes: ItemRunes;
   variants: ItemVariants;
@@ -1645,7 +1646,7 @@ export const engine = {
     call<{ tooltip: Tooltip; slots: { slot: string; label: string }[]; generation: number; rev: number }>("item_preview", { raw, generation }),
   itemCustomization: (target: ItemTarget) => call<ItemCustomization>("item_customization", target),
   customizeItem: (target: ItemTarget, edit: ItemCustomizationEdit) => call<ItemCustomization>("item_customize", { ...target, ...edit }),
-  itemModifierOptions: (target: ItemTarget, source: "Prefix" | "Suffix", query: string) =>
+  itemModifierOptions: (target: ItemTarget, source: "Crafted" | "Prefix" | "Suffix", query: string) =>
     call<{ options: { id: string; label: string; level: number }[]; total: number }>("item_modifier_options", { ...target, source, query }),
   /** `variants`: one entry per pick, a variant's name, a substring of it, or its index. */
   itemDbEquip: (db: "unique" | "rare", name: string, slotName?: string, variants?: (string | number)[]) =>
