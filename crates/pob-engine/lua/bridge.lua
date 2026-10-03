@@ -1369,7 +1369,8 @@ M.list_classes = function()
 			end
 		end
 		table.sort(ascendancies, function(a, b) return a.id < b.id end)
-		classes[#classes + 1] = { id = classId, name = classData.name, ascendancies = ascendancies }
+		classes[#classes + 1] = { id = classId, name = classData.name, ascendancies = ascendancies,
+			str = opt(classData.base_str), dex = opt(classData.base_dex), int = opt(classData.base_int) }
 	end
 	table.sort(classes, function(a, b) return a.id < b.id end)
 	local secondary = array({})

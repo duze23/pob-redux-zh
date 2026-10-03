@@ -159,6 +159,32 @@
     return map;
   });
 
+  // As PoB colours classes: by their strongest base attributes.
+  const ATTR_COLOUR: Record<string, string> = {
+    "100": "var(--c-life)",
+    "010": "var(--ok)",
+    "001": "var(--c-mana)",
+    "110": "var(--c-rare)",
+    "101": "var(--c-chaos)",
+    "011": "var(--c-es)",
+    "111": "var(--c-normal)",
+  };
+  const classColour = $derived.by(() => {
+    const map = new Map<string, string>();
+    for (const c of build.classes) {
+      const attrs = [c.str ?? 0, c.dex ?? 0, c.int ?? 0];
+      const top = Math.max(...attrs);
+      const colour = ATTR_COLOUR[attrs.map((v) => (v === top ? 1 : 0)).join("")];
+      if (!top || !colour) continue;
+      map.set(c.name, colour);
+      for (const a of c.ascendancies) {
+        map.set(a.name, colour);
+        if (a.internalId) map.set(a.internalId, colour);
+      }
+    }
+    return map;
+  });
+
   const recentEntries = $derived(recent.map((p) => builds.find((b) => b.path === p)).filter((b): b is BuildEntry => !!b));
 
   // GGG Build Planner (*.build) files
@@ -823,7 +849,7 @@
         {#if showFolder && b.folder}<span class="dim">{b.folder}/</span>{/if}{b.name}
       </button>
       <span class="meta">
-        <span class="cls">{b.class_name ?? "?"}{#if b.ascend_class_name}<span class="sep">·</span>{b.ascend_class_name}{/if}</span>
+        <span class="cls" style:color={classColour.get(b.class_name ?? "")}>{b.class_name ?? "?"}{#if b.ascend_class_name}<span class="sep">·</span>{b.ascend_class_name}{/if}</span>
         <span class="lvl num dim">L{b.level ?? "?"}</span>
         <span class="date num dim">{fmtDate(b.modified)}</span>
       </span>
@@ -1067,7 +1093,7 @@
                   {@const who = gb.ascendancy ? ascendByKey.get(gb.ascendancy) : undefined}
                   <button class="name" onclick={() => importGameBuildFile(gb.path, gb.name)} disabled={build.busy > 0}>{gb.name}</button>
                   <span class="meta">
-                    <span class="cls">{#if who}{who.cls}<span class="sep">·</span>{who.asc}{/if}</span>
+                    <span class="cls" style:color={who ? classColour.get(who.cls) : undefined}>{#if who}{who.cls}<span class="sep">·</span>{who.asc}{/if}</span>
                     <span class="lvl"></span>
                     <span class="date num dim">{fmtDate(gb.modified)}</span>
                   </span>
@@ -1143,7 +1169,7 @@
               <span class="cname" title={c.updated ? m.import_char_title_saved({ name: c.name, league: c.league, date: shortDate(c.updated) }) : m.import_char_title({ name: c.name, league: c.league })}>
                 {c.name}{#if !charLeague}<span class="dim small cleague">{c.league}</span>{/if}
               </span>
-              <span class="dim small">{c.className} <span class="num">{c.level}</span></span>
+              <span class="dim small"><span style:color={classColour.get(c.className)}>{c.className}</span> <span class="num">{c.level}</span></span>
               {#if c.status === "listed"}
                 <button class="act" onclick={() => importCharacter(c)} disabled={charBusy !== null || build.busy > 0}>
                   {charBusy === c.key ? m.import_importing() : m.import_import_short()}

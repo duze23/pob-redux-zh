@@ -663,6 +663,9 @@ export interface ClassInfo {
   id: number;
   name: string;
   ascendancies: { id: number; name: string; internalId?: string | null }[];
+  str: number | null;
+  dex: number | null;
+  int: number | null;
 }
 
 export interface GemInfo {
