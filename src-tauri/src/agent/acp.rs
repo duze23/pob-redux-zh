@@ -13,6 +13,7 @@ use crate::ai::ModelInfo;
 
 const SERVER: &str = "pobredux";
 const AUTH_REQUIRED: &str = "Authentication required";
+const OPENCODE_FREE: &str = "OpenCode's free models only work inside OpenCode itself. Pick a model from a provider you signed in to.";
 
 enum Check {
     CursorAbout,
@@ -113,8 +114,15 @@ pub(crate) async fn auth(spec: &Spec, launch: &Launch, status: &mut AgentStatus)
             status.account = Some(if std::env::var_os("XAI_API_KEY").is_some() { "xAI API key" } else { "Grok account" }.into());
         }
         Check::OpenCodeAuth => {
-            let Ok((out, err, _)) = run(&["auth", "list"]).await else { return };
-            let (total, names) = opencode_accounts(&strip_ansi(&format!("{out}\n{err}")));
+            // 2.x dropped the counted text and 1.x rejects --format; --standalone reads our env.
+            let (total, names) = if status.version.as_deref().and_then(major).is_some_and(|m| m >= 2) {
+                let Ok((out, _, true)) = launch.output(&["auth", "list", "--format", "json", "--standalone"], Duration::from_secs(30)).await else { return };
+                let Some(found) = opencode2_accounts(&out) else { return };
+                found
+            } else {
+                let Ok((out, err, _)) = run(&["auth", "list"]).await else { return };
+                opencode_accounts(&strip_ansi(&format!("{out}\n{err}")))
+            };
             status.signed_in = Some(total > 0);
             status.account = (!names.is_empty()).then(|| names.join(", "));
         }
@@ -133,6 +141,18 @@ fn opencode_accounts(text: &str) -> (u32, Vec<String>) {
         .filter_map(|l| l.split_whitespace().next().map(str::to_string))
         .collect();
     (count("credential") + count("environment variable"), names)
+}
+
+/// `auth list --format json` lists only integrations with a stored or environment connection.
+fn opencode2_accounts(out: &str) -> Option<(u32, Vec<String>)> {
+    let list: Vec<Value> = serde_json::from_str(out.trim()).ok()?;
+    let names: Vec<String> = list.iter().filter_map(|i| i["name"].as_str().or(i["id"].as_str()).map(str::to_string)).collect();
+    Some((list.len() as u32, names))
+}
+
+fn major(version: &str) -> Option<u32> {
+    let start = version.find(|c: char| c.is_ascii_digit())?;
+    version[start..].split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
 }
 
 fn option_id(options: &[Value], kinds: [&str; 2], fallback: &str) -> Value {
@@ -496,8 +516,13 @@ impl Proc {
                     let out = match out {
                         Ok(v) => v,
                         Err(_) if stopping.is_some() => return Ok(Outcome::Stopped),
-                        Err(e) if e.contains("free tier can only be used") => {
-                            return Err("OpenCode's free models only work inside OpenCode itself. Pick a model from a provider you signed in to.".into())
+                        Err(e) if e.contains("free tier can only be used") => return Err(OPENCODE_FREE.into()),
+                        Err(e) if e.contains("provider authentication required") => {
+                            return Err(if self.model.as_deref().is_some_and(|m| m.starts_with("opencode/")) {
+                                OPENCODE_FREE.into()
+                            } else {
+                                "OpenCode has no working sign-in for this model's provider. Run `opencode auth login` in a terminal, then try again.".into()
+                            })
                         }
                         Err(e) => return Err(self.conn.explain(e)),
                     };
@@ -622,5 +647,16 @@ mod tests {
         let text = "┌  Credentials ~/auth.json\n│\n└  0 credentials\n\n┌  Environment\n│\n●  Anthropic ANTHROPIC_API_KEY\n│\n└  1 environment variable";
         assert_eq!(super::opencode_accounts(text), (1, vec!["Anthropic".to_string()]));
         assert_eq!(super::opencode_accounts("└  0 credentials").0, 0);
+    }
+
+    #[test]
+    fn opencode2_accounts_are_read_from_json() {
+        let out = r#"[{"id":"anthropic","name":"Anthropic","connections":[{"type":"credential","label":"Claude Pro/Max"}]},{"id":"openai","name":"OpenAI","connections":[{"type":"env","name":"OPENAI_API_KEY"}]}]"#;
+        assert_eq!(super::opencode2_accounts(out), Some((2, vec!["Anthropic".to_string(), "OpenAI".to_string()])));
+        assert_eq!(super::opencode2_accounts("[]\n"), Some((0, vec![])));
+        assert_eq!(super::opencode2_accounts("No authenticated integrations"), None);
+        assert_eq!(super::major("2.0.22"), Some(2));
+        assert_eq!(super::major("v1.18.34"), Some(1));
+        assert_eq!(super::major("opencode 10.1"), Some(10));
     }
 }
