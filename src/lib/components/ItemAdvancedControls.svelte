@@ -13,6 +13,8 @@
 
   const shape = $derived(data.shape);
   const crucible = $derived(data.crucible.available ? data.crucible : null);
+  let crucibleOpen = $state(false);
+  const crucibleShown = $derived(!!crucible && (crucibleOpen || crucible.selected.some(Boolean)));
   const anointFlags = $derived(data.anoints);
   const corruptInfo = $derived(data.corruptions);
   const enchantable = $derived(data.enchantable);
@@ -134,8 +136,11 @@
     {#if corruptInfo?.corruptible || corruptInfo?.corrupted}
       <button class="btn sm" onclick={openCorrupt}>{corruptInfo.corrupted ? m.items_corrupted_modify() : m.items_corrupt()}</button>
     {/if}
+    {#if crucible && !crucibleShown}
+      <button class="btn sm" onclick={() => (crucibleOpen = true)}>{m.items_crucible_open()}</button>
+    {/if}
   </div>
-  {#if shape && (shape.canBeInfluenced || shape.socketLimit > 0 || shape.cluster || crucible)}
+  {#if shape && (shape.canBeInfluenced || shape.socketLimit > 0 || shape.cluster || crucibleShown)}
     <div class="shape">
       {#if shape.canBeInfluenced}
         <div class="srow">
@@ -175,7 +180,7 @@
           </span>
         </div>
       {/if}
-      {#if crucible}
+      {#if crucible && crucibleShown}
         <div class="srow cruc">
           <span class="label">{m.items_crucible()}</span>
           <div class="crucnodes">

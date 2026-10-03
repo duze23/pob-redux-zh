@@ -5475,60 +5475,64 @@ do
 			enchantable = M.item_enchants(p).available,
 			canCopyAnoints = item.canBeAnointed == true or item.base.type == "Amulet",
 			canCopyAugments = IS_POE2 and (item.base.socketLimit or 0) > 0,
-			benchCrafts = #M._benchMods(item) > 0 }
+			modifierSources = M._modifierSources(item) }
 	end
 
-	-- PoB's Crafting Bench list skips mod groups the item's generated affixes already use.
-	M._benchMods = function(item)
-		local found = {}
-		local master = build.data.masterMods
-		if not master or not item.type or item.type == "Jewel" or item.type == "Tincture" or item.type == "Graft" then return found end
-		local taken = {}
-		if item.crafted and item.affixes then
-			for _, list in ipairs({ item.prefixes or {}, item.suffixes or {} }) do
-				for _, slot in ipairs(list) do
-					local mod = slot.modId and slot.modId ~= "None" and item.affixes[slot.modId]
-					if mod and mod.group then taken[mod.group] = true end
-				end
+	-- PoB's own "Add modifier" popup, opened headless on the item, so every source and its list match PoB.
+	M._modifierPopup = function(item, fn)
+		local tab = build.itemsTab
+		local shown, depth = tab.displayItem, #main.popups
+		tab.displayItem = item
+		local ok, res = pcall(function()
+			tab:AddCustomModifierToDisplayItem()
+			return fn(main.popups[1].controls)
+		end)
+		while #main.popups > depth do main:ClosePopup() end
+		tab.displayItem = shown
+		if not ok then error(res, 0) end
+		return res
+	end
+	M._modifierList = function(c, source)
+		for i, s in ipairs(c.source.list) do
+			if s.sourceId == source then
+				if c.source.selIndex ~= i then c.source:SetSel(i) end
+				return c.modSelect.list
 			end
 		end
-		for i, craft in ipairs(master) do
-			if craft.types and craft.types[item.type] and not taken[craft.group] then found[#found + 1] = i end
-		end
-		return found
+		error("this item takes no " .. tostring(source) .. " modifiers", 0)
+	end
+	M._modifierLabel = function(label)
+		return (tostring(label):gsub("%^x%x%x%x%x%x%x", ""):gsub("%^%d", ""):gsub("%s%s+", " · "))
+	end
+	M._modifierSources = function(item)
+		local ok, list = pcall(M._modifierPopup, item, function(c)
+			local out = array({})
+			for _, s in ipairs(c.source.list) do
+				if s.sourceId ~= "CUSTOM" then out[#out + 1] = { id = s.sourceId, label = s.label } end
+			end
+			return out
+		end)
+		return ok and list or array({})
 	end
 
 	M.item_modifier_options = function(p)
 		local item = requireItem(p)
-		local result = array({})
-		local query = tostring(p.query or ""):lower()
-		local function matches(label)
-			for word in query:gmatch("%S+") do
-				if not label:lower():find(word, 1, true) then return false end
-			end
-			return true
-		end
-		if p.source == "Crafted" then
-			for _, i in ipairs(M._benchMods(item)) do
-				local craft = build.data.masterMods[i]
-				local label = table.concat(craft, " / ") .. " (" .. craft.type .. ")"
-				if matches(label) then result[#result + 1] = { id = "bench:" .. i, label = label, level = craft.level or 0 } end
+		local words = {}
+		for word in tostring(p.query or ""):lower():gmatch("%S+") do words[#words + 1] = word end
+		return M._modifierPopup(item, function(c)
+			local result = array({})
+			for i, entry in ipairs(M._modifierList(c, p.source)) do
+				local label = M._modifierLabel(entry.label)
+				local lower, match = label:lower(), true
+				for _, word in ipairs(words) do
+					if not lower:find(word, 1, true) then match = false break end
+				end
+				if match then result[#result + 1] = { id = tostring(i), label = label, level = opt(entry.mod and entry.mod.level) } end
 			end
 			local total = #result
 			while #result > 100 do table.remove(result) end
 			return { options = result, total = total }
-		end
-		local source = p.source == "Suffix" and "Suffix" or "Prefix"
-		for id, mod in pairs(item.affixes or {}) do
-			if mod.type == source and item:GetModSpawnWeight(mod) > 0 then
-				local label = table.concat(mod, " / ")
-				if matches(label) then result[#result + 1] = { id = id, label = label, level = mod.level or 0 } end
-			end
-		end
-		table.sort(result, function(a, b) return a.label == b.label and a.id < b.id or a.label < b.label end)
-		local total = #result
-		while #result > 100 do table.remove(result) end
-		return { options = result, total = total }
+		end)
 	end
 
 	M.item_customize = function(p)
@@ -5569,21 +5573,13 @@ do
 				item.itemSocketCount = count
 				item:UpdateRunes()
 			elseif p.operation == "add_modifier" then
-				local bench = type(p.modId) == "string" and tonumber(p.modId:match("^bench:(%d+)$"))
-				if bench then
-					local craft = build.data.masterMods and build.data.masterMods[bench]
-					if not craft or not craft.types or not craft.types[item.type] then error("modifier is not compatible with this item", 0) end
-					for _, line in ipairs(craft) do
-						table.insert(item.explicitModLines, { line = line, modTags = craft.modTags, crafted = true, range = main.defaultItemAffixQuality or 0.5 })
-					end
-				elseif p.modId then
-					local mod = item.affixes and item.affixes[p.modId]
-					if not mod or (mod.type ~= "Prefix" and mod.type ~= "Suffix") or item:GetModSpawnWeight(mod) <= 0 then
-						error("modifier is not compatible with this item", 0)
-					end
-					for _, line in ipairs(mod) do
-						table.insert(item.explicitModLines, { line = line, range = main.defaultItemAffixQuality or 0.5,
-							modTags = mod.modTags, [mod.type:lower()] = true, custom = item.crafted or nil })
+				if p.source then
+					local entry = M._modifierPopup(item, function(c) return M._modifierList(c, p.source)[tonumber(p.modId) or 0] end)
+					if not entry or (p.label and M._modifierLabel(entry.label) ~= p.label) then error("the modifier list changed; pick it again", 0) end
+					-- As PoB's addModifier writes them; a desecrated line is also custom.
+					for _, line in ipairs(entry.mod) do
+						table.insert(item.explicitModLines, { line = line, modTags = entry.mod.modTags, [entry.type] = true,
+							custom = entry.type == "desecrated" or nil, range = main.defaultItemAffixQuality or 0.5 })
 					end
 				else
 					table.insert(item.explicitModLines, { line = singleLine(p.text), custom = true, range = main.defaultItemAffixQuality or 0.5 })

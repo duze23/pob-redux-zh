@@ -10,6 +10,7 @@
     type ItemTarget,
   } from "$lib/engine.svelte";
   import { m } from "$lib/paraglide/messages";
+  import SearchSelect from "./SearchSelect.svelte";
 
   let { slot, table, target, onchange, onbegin, onend }: {
     slot: AffixSlot;
@@ -237,16 +238,17 @@
   }
 </script>
 
-<select class="select" aria-label={table === "prefixes" ? m.items_prefix_number({ index: slot.index }) : m.items_suffix_number({ index: slot.index })}
-  value={selectedSeries} disabled={changing} onchange={(e) => {
-    const seriesId = e.currentTarget.value;
-    e.currentTarget.value = selectedSeries;
-    void changeFamily(seriesId);
-  }}>
-  <option value="">{table === "prefixes" ? m.items_empty_prefix() : m.items_empty_suffix()}</option>
-  {#if missingCurrent}<option value={slot.modId}>{missingLabel}</option>{/if}
-  {#each families as family (family.id)}<option value={family.id}>{family.label}</option>{/each}
-</select>
+<SearchSelect
+  label={table === "prefixes" ? m.items_prefix_number({ index: slot.index }) : m.items_suffix_number({ index: slot.index })}
+  value={selectedSeries}
+  disabled={changing}
+  options={[
+    { value: "", label: table === "prefixes" ? m.items_empty_prefix() : m.items_empty_suffix() },
+    ...(missingCurrent ? [{ value: slot.modId, label: missingLabel }] : []),
+    ...families.map((family) => ({ value: family.id, label: family.label })),
+  ]}
+  onchange={(seriesId) => void changeFamily(seriesId)}
+/>
 {#if slot.modId !== "None"}
   <div class="affix-roll">
     <div class="affix-detail">
@@ -275,7 +277,6 @@
 {#if error}<span class="error" role="alert">{error}</span>{/if}
 
 <style>
-  .select { width: 100%; min-width: 0; font-size: var(--fs-xs); }
   .affix-roll { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .affix-detail { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--fg-2); }
   .value { color: var(--fg-1); }

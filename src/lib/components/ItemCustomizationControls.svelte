@@ -28,10 +28,10 @@
     onpendingchange(false);
   }
 
-  let source = $state<"Custom" | "Crafted" | "Prefix" | "Suffix">("Custom");
+  let source = $state("Custom");
   let query = $state("");
   let customText = $state("");
-  let options = $state<{ id: string; label: string; level: number }[]>([]);
+  let options = $state<{ id: string; label: string; level: number | null }[]>([]);
   let total = $state(0);
   let option = $state("");
   let loading = $state(false);
@@ -43,10 +43,11 @@
   });
 
   $effect(() => {
-    if ((data.affixes.crafted && source !== "Crafted") || (!data.benchCrafts && source === "Crafted")) source = "Custom";
+    if (source !== "Custom" && !data.modifierSources.some((s) => s.id === source)) source = "Custom";
   });
 
   $effect(() => {
+    data.raw;
     const currentTarget = target;
     const currentSource = source;
     const currentQuery = query;
@@ -162,25 +163,21 @@
       <div class="label">{m.items_add_modifier()}</div>
       <select class="select" aria-label={m.items_modifier_source()} bind:value={source}>
         <option value="Custom">{m.items_custom_modifier()}</option>
-        {#if data.benchCrafts}
-          <option value="Crafted">{m.items_crafting_bench()}</option>
-        {/if}
-        {#if !data.affixes.crafted}
-          <option value="Prefix">{m.items_prefixes()}</option>
-          <option value="Suffix">{m.items_suffixes()}</option>
-        {/if}
+        {#each data.modifierSources as s (s.id)}
+          <option value={s.id}>{s.label}</option>
+        {/each}
       </select>
       {#if source === "Custom"}
         <input class="input" aria-label={m.items_new_modifier()} placeholder={m.items_modifier_example()} bind:value={customText} />
       {:else}
         <input class="input" aria-label={m.items_search_modifiers()} placeholder={m.common_search()} bind:value={query} />
         <select class="select" aria-label={m.items_new_modifier()} bind:value={option} disabled={loading}>
-          {#each options as opt (opt.id)}<option value={opt.id}>{opt.label} · {m.items_mod_level({ level: opt.level })}</option>{/each}
+          {#each options as opt (opt.id)}<option value={opt.id}>{opt.label}{opt.level ? ` · ${m.items_mod_level({ level: opt.level })}` : ""}</option>{/each}
         </select>
         <span class="dim">{loading ? m.items_mod_loading() : m.items_mod_count({ shown: options.length, total })}</span>
       {/if}
       {#if error}<div class="error" role="alert">{error}</div>{/if}
-      <button class="btn sm" disabled={source === "Custom" ? !customText.trim() : loading || !option} onclick={() => onchange(source === "Custom" ? { operation: "add_modifier", text: customText } : { operation: "add_modifier", modId: option })}>{m.items_add_modifier()}</button>
+      <button class="btn sm" disabled={source === "Custom" ? !customText.trim() : loading || !option} onclick={() => onchange(source === "Custom" ? { operation: "add_modifier", text: customText } : { operation: "add_modifier", source, modId: option, label: options.find((o) => o.id === option)?.label })}>{m.items_add_modifier()}</button>
     </div>
   </details>
 </fieldset>
