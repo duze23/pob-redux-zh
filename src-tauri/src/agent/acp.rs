@@ -12,13 +12,14 @@ use super::{AgentEvent, AgentStatus, Outcome, Session};
 use crate::ai::ModelInfo;
 
 const SERVER: &str = "pobredux";
-const AUTH_REQUIRED: &str = "Authentication required";
 const OPENCODE_FREE: &str = "OpenCode's free models only work inside OpenCode itself. Pick a model from a provider you signed in to.";
+const GEMINI_PERSONAL: &str = "Google no longer lets personal Google accounts use Gemini CLI. Use Antigravity instead, or sign Gemini CLI in with a Gemini API key.";
 
 enum Check {
     CursorAbout,
     GrokModels,
     OpenCodeAuth,
+    Session,
     Unknown,
 }
 
@@ -27,7 +28,7 @@ pub(crate) struct Spec {
     name: &'static str,
     args: &'static [&'static str],
     /// Sent to `authenticate`; the agent's own saved login backs it.
-    auth: &'static str,
+    auth: Option<&'static str>,
     /// An API key in this variable switches `authenticate` to the second method.
     key: Option<(&'static str, &'static str)>,
     env: &'static [(&'static str, &'static str)],
@@ -41,7 +42,7 @@ pub(crate) struct Spec {
 pub(crate) static CURSOR: Spec = Spec {
     name: "Cursor",
     args: &["acp"],
-    auth: "cursor_login",
+    auth: Some("cursor_login"),
     key: None,
     env: &[],
     login: Some("cursor-agent login"),
@@ -52,7 +53,7 @@ pub(crate) static CURSOR: Spec = Spec {
 pub(crate) static GROK: Spec = Spec {
     name: "Grok",
     args: &["--permission-mode", "default", "agent", "stdio"],
-    auth: "cached_token",
+    auth: Some("cached_token"),
     key: Some(("XAI_API_KEY", "xai.api_key")),
     env: &[("GROK_OAUTH2_REFERRER", "pob-redux")],
     login: Some("grok login"),
@@ -64,7 +65,7 @@ pub(crate) static GROK: Spec = Spec {
 pub(crate) static OPENCODE: Spec = Spec {
     name: "OpenCode",
     args: &["acp"],
-    auth: "opencode-login",
+    auth: Some("opencode-login"),
     key: None,
     env: &[("OPENCODE_CONFIG_CONTENT", r#"{"tools":{"*":false,"pobredux_*":true},"permission":{"*":"deny","pobredux_*":"allow"}}"#)],
     login: Some("opencode auth login"),
@@ -72,11 +73,45 @@ pub(crate) static OPENCODE: Spec = Spec {
     list_models: None,
 };
 
+pub(crate) static COPILOT: Spec = Spec {
+    name: "Copilot",
+    args: &["--acp", "--disable-builtin-mcps", "--no-ask-user"],
+    auth: None,
+    key: None,
+    env: &[],
+    login: Some("copilot login"),
+    check: Check::Session,
+    list_models: None,
+};
+
+pub(crate) static KIMI: Spec = Spec {
+    name: "Kimi",
+    args: &["acp"],
+    auth: None,
+    key: None,
+    env: &[],
+    login: Some("kimi login"),
+    check: Check::Session,
+    list_models: None,
+};
+
+/// Its `authenticate` deletes saved credentials when the method differs from the user's, so it is never called.
+pub(crate) static GEMINI: Spec = Spec {
+    name: "Gemini",
+    args: &["--acp"],
+    auth: None,
+    key: None,
+    env: &[("NO_BROWSER", "true"), ("GEMINI_CLI_NO_RELAUNCH", "true")],
+    login: Some("gemini"),
+    check: Check::Session,
+    list_models: None,
+};
+
 /// Google's agent, downloaded and run with a private profile by `antigravity.rs`.
 pub(crate) static ANTIGRAVITY: Spec = Spec {
     name: "Antigravity",
     args: &[],
-    auth: "oauth-personal",
+    auth: Some("oauth-personal"),
     key: None,
     env: &[],
     login: None,
@@ -126,8 +161,49 @@ pub(crate) async fn auth(spec: &Spec, launch: &Launch, status: &mut AgentStatus)
             status.signed_in = Some(total > 0);
             status.account = (!names.is_empty()).then(|| names.join(", "));
         }
+        Check::Session => {
+            let temp = std::env::temp_dir();
+            let probe = open(spec, launch, &temp, json!([]), Vec::new(), false);
+            let Ok(opened) = tokio::time::timeout(Duration::from_secs(60), probe).await else { return };
+            match opened {
+                Ok((conn, session)) => {
+                    if let Some(id) = session["sessionId"].as_str() {
+                        let _ = conn.rpc.request_for("session/close", json!({ "sessionId": id }), Some(Duration::from_secs(2))).await;
+                    }
+                    status.signed_in = Some(true);
+                    status.account = if spec.name == GEMINI.name { gemini_account() } else { None };
+                }
+                Err(e) if e == signed_out(spec) => status.signed_in = Some(false),
+                Err(e) if e == GEMINI_PERSONAL => {
+                    status.signed_in = Some(false);
+                    status.error = Some(e);
+                }
+                Err(_) => {}
+            }
+        }
         Check::Unknown => {}
     }
+}
+
+fn gemini_account() -> Option<String> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })?;
+    let text = std::fs::read_to_string(std::path::Path::new(&home).join(".gemini").join("settings.json")).unwrap_or_default();
+    let settings: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+    let method = settings["security"]["auth"]["selectedType"].as_str().or(settings["selectedAuthType"].as_str());
+    let label = match method {
+        Some("oauth-personal") => "Google account",
+        Some("gemini-api-key") => "Gemini API key",
+        Some("vertex-ai") => "Vertex AI",
+        Some("gateway") => "AI API gateway",
+        _ if std::env::var_os("GEMINI_API_KEY").is_some() => "Gemini API key",
+        _ => return None,
+    };
+    Some(label.into())
+}
+
+fn auth_error(e: &str) -> bool {
+    let e = e.to_ascii_lowercase();
+    ["authentication required", "authorization is required", "api key is missing"].iter().any(|s| e.contains(s))
 }
 
 /// Stored credentials plus provider keys found in the environment, and their provider names.
@@ -238,7 +314,7 @@ pub(crate) async fn sign_in(spec: &Spec, launch: &Launch, cwd: &std::path::Path,
         .rpc
         .request_for("session/new", json!({ "cwd": cwd.to_string_lossy(), "mcpServers": [] }), Some(Duration::from_secs(120)))
         .await
-        .map_err(|e| if e.contains(AUTH_REQUIRED) { signed_out(spec) } else { conn.explain(e) })?;
+        .map_err(|e| if auth_error(&e) { signed_out(spec) } else { conn.explain(e) })?;
     if let Some(id) = session["sessionId"].as_str() {
         let _ = conn.rpc.request_for("session/close", json!({ "sessionId": id }), Some(Duration::from_secs(5))).await;
     }
@@ -277,11 +353,10 @@ async fn open(spec: &Spec, launch: &Launch, cwd: &std::path::Path, mcp: Value, a
     }
     if sign_in {
         let method = match spec.key {
-            Some((var, method)) if std::env::var_os(var).is_some_and(|v| !v.is_empty()) => method,
+            Some((var, method)) if std::env::var_os(var).is_some_and(|v| !v.is_empty()) => Some(method),
             _ => spec.auth,
         };
-        let offered = init["authMethods"].as_array().is_some_and(|m| m.iter().any(|a| a["id"] == method));
-        if offered {
+        if let Some(method) = method.filter(|m| init["authMethods"].as_array().is_some_and(|list| list.iter().any(|a| a["id"] == *m))) {
             conn.rpc.request_for("authenticate", json!({ "methodId": method }), Some(Duration::from_secs(300))).await.map_err(|_| signed_out(spec))?;
         }
     }
@@ -289,7 +364,15 @@ async fn open(spec: &Spec, launch: &Launch, cwd: &std::path::Path, mcp: Value, a
         .rpc
         .request_for("session/new", json!({ "cwd": cwd.to_string_lossy(), "mcpServers": mcp }), Some(Duration::from_secs(120)))
         .await
-        .map_err(|e| if e.contains(AUTH_REQUIRED) { signed_out(spec) } else { conn.explain(e) })?;
+        .map_err(|e| {
+            if e.contains("no longer supported for Gemini Code Assist for individuals") {
+                GEMINI_PERSONAL.into()
+            } else if auth_error(&e) {
+                signed_out(spec)
+            } else {
+                conn.explain(e)
+            }
+        })?;
     Ok((conn, session))
 }
 
@@ -308,10 +391,11 @@ fn efforts_of(list: &Value) -> Vec<String> {
 fn model_choices(session: &Value) -> (Vec<Choice>, Option<String>) {
     let (effort_levels, _) = effort_option(session);
     if let Some(opt) = session["configOptions"].as_array().and_then(|o| o.iter().find(|c| c["category"] == "model" && c["type"] == "select")) {
-        let mut out = Vec::new();
+        let mut out: Vec<Choice> = Vec::new();
         for o in opt["options"].as_array().into_iter().flatten() {
             for item in o["options"].as_array().cloned().unwrap_or_else(|| vec![o.clone()]) {
-                if let Some(v) = item["value"].as_str() {
+                // Copilot lists a model in more than one group.
+                if let Some(v) = item["value"].as_str().filter(|v| out.iter().all(|c| c.id != *v)) {
                     out.push(Choice { id: v.into(), label: item["name"].as_str().unwrap_or(v).into(), efforts: effort_levels.clone() });
                 }
             }
@@ -614,7 +698,7 @@ mod tests {
         let grouped = json!({ "configOptions": [
             { "id": "model", "category": "model", "type": "select", "options": [
                 { "group": "g", "name": "G", "options": [{ "value": "m1", "name": "One" }] },
-                { "group": "h", "name": "H", "options": [{ "value": "m2", "name": "Two" }] },
+                { "group": "h", "name": "H", "options": [{ "value": "m2", "name": "Two" }, { "value": "m1", "name": "One" }] },
             ] },
             { "id": "effort", "category": "thought_level", "type": "select", "options": [{ "value": "low" }, { "value": "high" }] },
         ] });
@@ -647,6 +731,14 @@ mod tests {
         let text = "┌  Credentials ~/auth.json\n│\n└  0 credentials\n\n┌  Environment\n│\n●  Anthropic ANTHROPIC_API_KEY\n│\n└  1 environment variable";
         assert_eq!(super::opencode_accounts(text), (1, vec!["Anthropic".to_string()]));
         assert_eq!(super::opencode_accounts("└  0 credentials").0, 0);
+    }
+
+    #[test]
+    fn sign_in_failures_are_recognised() {
+        assert!(super::auth_error("Authentication required: provider authentication required"));
+        assert!(super::auth_error("Manual authorization is required but the current session is non-interactive."));
+        assert!(super::auth_error("Gemini API key is missing or not configured."));
+        assert!(!super::auth_error("connect ECONNREFUSED 127.0.0.1:443"));
     }
 
     #[test]

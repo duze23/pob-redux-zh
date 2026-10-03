@@ -1,5 +1,5 @@
 //! The assistant through the user's own coding agent (Claude Code, Codex,
-//! Cursor, Grok, OpenCode, Antigravity), so their subscription pays
+//! Copilot, Cursor, Grok, Kimi, OpenCode, Gemini CLI, Antigravity), so their subscription pays
 //! for it. The agent runs the conversation; the build's tools reach it over a
 //! private MCP server that only this session can call, and every call passes
 //! the gate below so the panel can show it and hold writes for approval.
@@ -35,13 +35,16 @@ const MAX_RESULT_CHARS: usize = 6000;
 pub enum Cli {
     Claude,
     Codex,
+    Copilot,
     Cursor,
     Grok,
+    Kimi,
     OpenCode,
+    Gemini,
     Antigravity,
 }
 
-pub const CLIS: [Cli; 6] = [Cli::Claude, Cli::Codex, Cli::Cursor, Cli::Grok, Cli::OpenCode, Cli::Antigravity];
+pub const CLIS: [Cli; 9] = [Cli::Claude, Cli::Codex, Cli::Copilot, Cli::Cursor, Cli::Grok, Cli::Kimi, Cli::OpenCode, Cli::Gemini, Cli::Antigravity];
 
 struct Info {
     id: &'static str,
@@ -56,9 +59,12 @@ impl Cli {
         let (id, label, binary, login, install) = match self {
             Cli::Claude => ("claude", "Claude", "claude", Some("claude auth login"), "https://code.claude.com/docs/en/setup"),
             Cli::Codex => ("codex", "Codex", "codex", Some("codex login"), "https://developers.openai.com/codex/cli"),
+            Cli::Copilot => ("copilot", "Copilot", "copilot", Some("copilot login"), "https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli"),
             Cli::Cursor => ("cursor", "Cursor", "cursor-agent", Some("cursor-agent login"), "https://cursor.com/docs/cli/installation"),
             Cli::Grok => ("grok", "Grok", "grok", Some("grok login"), "https://www.npmjs.com/package/@xai-official/grok"),
+            Cli::Kimi => ("kimi", "Kimi", "kimi", Some("kimi login"), "https://github.com/MoonshotAI/kimi-code"),
             Cli::OpenCode => ("opencode", "OpenCode", "opencode", Some("opencode auth login"), "https://opencode.ai/docs/"),
+            Cli::Gemini => ("gemini", "Gemini", "gemini", Some("gemini"), "https://github.com/google-gemini/gemini-cli#-installation"),
             Cli::Antigravity => ("antigravity", "Antigravity", "agy_acp_server", None, "https://antigravity.google/docs/ide/extensions"),
         };
         Info { id, label, binary, login, install }
@@ -85,9 +91,12 @@ impl Cli {
         let (windows, unix) = match self {
             Cli::Claude => ("irm https://claude.ai/install.ps1 | iex", "curl -fsSL https://claude.ai/install.sh | bash"),
             Cli::Codex => ("irm https://chatgpt.com/codex/install.ps1 | iex", "curl -fsSL https://chatgpt.com/codex/install.sh | sh"),
+            Cli::Copilot => ("winget install GitHub.Copilot", "curl -fsSL https://gh.io/copilot-install | bash"),
             Cli::Cursor => ("irm 'https://cursor.com/install?win32=true' | iex", "curl https://cursor.com/install -fsS | bash"),
             Cli::Grok => ("irm https://x.ai/cli/install.ps1 | iex", "curl -fsSL https://x.ai/cli/install.sh | bash"),
+            Cli::Kimi => ("irm https://code.kimi.com/kimi-code/install.ps1 | iex", "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash"),
             Cli::OpenCode => ("npm install -g opencode-ai", "curl -fsSL https://opencode.ai/install | bash"),
+            Cli::Gemini => ("npm install -g @google/gemini-cli", "npm install -g @google/gemini-cli"),
             Cli::Antigravity => return None,
         };
         Some(if cfg!(windows) { windows } else { unix })
@@ -96,8 +105,8 @@ impl Cli {
     fn login_args(self) -> &'static [&'static str] {
         match self {
             Cli::Claude | Cli::OpenCode => &["auth", "login"],
-            Cli::Codex | Cli::Cursor | Cli::Grok => &["login"],
-            Cli::Antigravity => &[],
+            Cli::Codex | Cli::Copilot | Cli::Cursor | Cli::Grok | Cli::Kimi => &["login"],
+            Cli::Gemini | Cli::Antigravity => &[],
         }
     }
 
@@ -112,9 +121,12 @@ impl Cli {
 
     fn acp(self) -> Option<&'static acp::Spec> {
         match self {
+            Cli::Copilot => Some(&acp::COPILOT),
             Cli::Cursor => Some(&acp::CURSOR),
             Cli::Grok => Some(&acp::GROK),
+            Cli::Kimi => Some(&acp::KIMI),
             Cli::OpenCode => Some(&acp::OPENCODE),
+            Cli::Gemini => Some(&acp::GEMINI),
             Cli::Antigravity => Some(&acp::ANTIGRAVITY),
             Cli::Claude | Cli::Codex => None,
         }

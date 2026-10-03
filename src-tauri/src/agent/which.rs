@@ -179,6 +179,7 @@ fn known_dirs() -> Vec<PathBuf> {
         dirs.push(h.join(".claude").join("local"));
         dirs.push(h.join(".cargo").join("bin"));
         dirs.push(h.join(".grok").join("bin"));
+        dirs.push(h.join(".kimi-code").join("bin"));
         if cfg!(windows) {
             dirs.push(h.join("scoop").join("shims"));
         } else {
