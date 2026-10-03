@@ -120,7 +120,18 @@
     const joined = block.text && !block.text.endsWith("\n") ? block.text + "\n" + text : (block.text ?? "") + text;
     build.run(() => engine.setCustomModBlock(block.index, { text: joined }));
   }
+
+  let filterEl = $state<HTMLInputElement>();
+  function onKey(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      filterEl?.focus();
+      filterEl?.select();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKey} />
 
 <div class="page">
   <div class="toolbar">
@@ -161,7 +172,7 @@
     >
     <button class="btn sm ghost" disabled={sets.length <= 1} onclick={() => activeSet && build.run(() => engine.deleteConfigSet(activeSet.id))}>{m.common_delete()}</button>
     <span class="vr"></span>
-    <input class="input" placeholder={m.config_filter()} bind:value={filter} />
+    <input class="input" placeholder={m.config_filter()} bind:value={filter} bind:this={filterEl} title="Ctrl+F" />
     <label class="chk small" title={m.config_relevant_only_title()}>
       <input type="checkbox" bind:checked={relevantOnly} disabled={!visibility} />
       {m.config_relevant_only()}

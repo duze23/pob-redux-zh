@@ -14,6 +14,22 @@
 
   let actor = $state<"player" | "minion">("player");
 
+  let query = $state("");
+  let searchEl = $state<HTMLInputElement>();
+  const needle = $derived(query.trim().toLowerCase());
+  const hit = (text: string | null | undefined) => needle !== "" && stripPobText(text ?? "").toLowerCase().includes(needle);
+  const sectionHit = (sec: CalcSection) => hit(sec.subSections[0]?.label);
+  const subHit = (sec: CalcSection, sub: CalcSubSection) => sectionHit(sec) || hit(sub.label) || sub.rows.some((row) => hit(row.label));
+  const rowShown = (sec: CalcSection, sub: CalcSubSection, row: CalcRow) => !needle || sectionHit(sec) || hit(sub.label) || hit(row.label);
+
+  function onKey(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      searchEl?.focus();
+      searchEl?.select();
+    }
+  }
+
   const SECTION_OPEN_KEY = "pob-redux:calcs-section-open";
   let sectionOpenOverrides = $state<Record<string, boolean>>({});
   try {
@@ -158,7 +174,9 @@
   }
 
   const sectionBands = $derived.by(() => {
-    const visible = sections.filter((section) => section.enabled && section.subSections.some(subsectionHasContent));
+    const visible = sections.filter(
+      (section) => section.enabled && section.subSections.some(subsectionHasContent) && (!needle || section.subSections.some((sub) => subHit(section, sub))),
+    );
     const offence = visible.filter((section) => section.group === 1 && section.id !== "DamageTaken");
     const defence = visible.filter((section) => section.group === 3 || section.id === "DamageTaken" || DEFENCE_RESOURCE_IDS.has(section.id));
     const assigned = new Set([...offence, ...defence]);
@@ -328,8 +346,20 @@
 
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <div class="page">
   <div class="toolbar">
+    <input
+      class="input search"
+      type="search"
+      bind:this={searchEl}
+      bind:value={query}
+      placeholder={m.common_search()}
+      aria-label={m.calcs_search_title()}
+      title={m.calcs_search_title()}
+      onkeydown={(e) => e.key === "Escape" && (query = "")}
+    />
     <label class="fld-inline skill-picker">
       <span class="label">{m.calcs_socket_group()}</span>
       <select
@@ -405,9 +435,11 @@
               {#each band.sections as sec (sec.index)}
               {@const table = sec.subSections.some((s) => s.rows.some((r) => r.cells.length >= 4))}
               {@const head = sec.subSections[0]}
-              {@const open = sectionIsOpen(sec)}
-              {@const damageHeroes = damageTakenHeroes(sec)}
-              {@const bodySubSections = sec.subSections.filter((sub) => subsectionHasContent(sub) && !isPromotedDamageTakenSubsection(sec, sub.label))}
+              {@const open = needle !== "" || sectionIsOpen(sec)}
+              {@const damageHeroes = damageTakenHeroes(sec).filter((hero) => !needle || sectionHit(sec) || hit(hero.label))}
+              {@const bodySubSections = sec.subSections.filter(
+                (sub) => subsectionHasContent(sub) && !isPromotedDamageTakenSubsection(sec, sub.label) && (!needle || subHit(sec, sub)),
+              )}
               {@const headerExtra = cardHeaderExtra(sec, head?.extra ?? null)}
               {#if head}
                 <section class="section" class:table use:masonryCard>
@@ -421,7 +453,7 @@
                     {#if sec.id === "HitDamage"}
                       <div class="hit-heroes">
                         {#each sec.subSections as sub (sub.index)}
-                          {#each sub.rows.filter((row) => isHitDamageHero(sec, row)) as row (row.index)}
+                          {#each sub.rows.filter((row) => isHitDamageHero(sec, row) && rowShown(sec, sub, row)) as row (row.index)}
                             {@const cell = row.cells[0]}
                             {#if cell}
                               {@const pinned = isPinned(breakdownKey(sec, sub.index, row.index, cell.index))}
@@ -470,7 +502,7 @@
                       {@const chargeArt = chargeArtName(sec, sub.label)}
                       <div class="subsection" class:charge-subsection={chargeArt != null}>
                         {#if sub.index !== head.index}
-                          <div class="subhead" class:first={si === 0}>
+                          <div class="subhead" class:first={si === 0} class:match={hit(sub.label)}>
                             <span class="sublabel"><PobText text={calcSubsectionLabel(sec, sub.label)} /></span>
                             {#if sub.extra && !(sec.id === "DamageTaken" && sub.label === 'Effective "Health" Pool')}
                               <span class="extra num"><PobText text={sub.extra} /></span>
@@ -478,8 +510,8 @@
                           </div>
                         {/if}
                         <div class="rows" class:wide={cols > 1} style:--cols={cols} style:--colw={`${Math.round((sub.colWidth ?? 95) * 0.72)}px`}>
-                          {#each sub.rows.filter((row) => !isHitDamageHero(sec, row) && !isAttributeRequirementRow(sec, row)) as row, ri (row.index)}
-                            <div class="crow" class:small={row.textSize != null && row.textSize < 16} class:head={ri === 0 && !row.label && row.cells.length > 1}>
+                          {#each sub.rows.filter((row) => !isHitDamageHero(sec, row) && !isAttributeRequirementRow(sec, row) && (!row.label || rowShown(sec, sub, row))) as row, ri (row.index)}
+                            <div class="crow" class:small={row.textSize != null && row.textSize < 16} class:head={ri === 0 && !row.label && row.cells.length > 1} class:match={hit(row.label)}>
                               <span class="rlabel">{#if row.label}<PobText text={calcRowLabel(sec, row.label)} />{/if}</span>
                               {#each row.cells as cell, i (cell.index)}
                                 {@const span = cols > 1 && i === row.cells.length - 1 && row.cells.length < cols}
@@ -533,6 +565,9 @@
             </div>
           </div>
         {/each}
+        {#if needle && sectionBands.length === 0}
+          <p class="dim small nomatch">{m.calcs_no_match()}</p>
+        {/if}
       </div>
       <CalcBreakdownWindows
         bind:this={breakdownWindows}
@@ -924,6 +959,18 @@
     grid-column: 1;
     padding: 2px 0;
     color: var(--fg-2);
+  }
+  .crow.match > .rlabel,
+  .subhead.match .sublabel {
+    color: var(--fg-0);
+    background: color-mix(in oklab, var(--focus) 22%, transparent);
+  }
+  .search {
+    flex: 0 0 180px;
+    height: 26px;
+  }
+  .nomatch {
+    padding: 16px 12px;
   }
   .wide .rlabel {
     padding: 2px 8px 2px 6px;

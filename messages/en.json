@@ -266,6 +266,8 @@
   "calcs_hit": "Hit",
   "calcs_maximum": "Maximum",
   "calcs_required": "{value} Required",
+  "calcs_search_title": "Find a stat by name (Ctrl+F)",
+  "calcs_no_match": "No stat matches this search.",
 
   "provider_intro_agents": "Each coding agent runs on this computer, signed in to your own account, so your plan's usage limits apply. The app starts the program and never sees your login, and the agent can only use the build's tools. Ollama runs a model on your own machine.",
   "provider_not_installed": "not installed",
