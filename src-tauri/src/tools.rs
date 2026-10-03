@@ -67,7 +67,9 @@ remove_gem / set_main_skill, and set_config, which also holds the bandit and pan
 gear, optimise_gear searches the real mod pool for every slot and scores each candidate with PoB, keeping \
 resistances capped; apply its proposals with `apply` or equip_item_raw. For unique jewels, suggest_unique_jewels \
 scores every one PoB knows in every allocated socket, variants included, and ranks them; equip a pick with \
-equip_from_item_db and its `variants`. For one specific item, list_bases \
+equip_from_item_db and its `variants`. For cluster jewels, suggest_cluster_jewels tries each size, enchant and \
+notable set in the empty cluster sockets and ranks them by gain per point; apply_cluster_jewel puts one in. \
+For one specific item, list_bases \
 then list_affixes for the mod pool, then craft_rare, which builds it from PoB's own affix tables. Before a \
 run of changes call checkpoint; every write returns `stats` and a `delta` \
 against the previous state, and rollback restores a checkpoint if the result is worse. Manage alternate \
@@ -177,7 +179,7 @@ fn stat_delta(before: &Value, after: &Value) -> Value {
 }
 
 fn is_read_only(name: &str) -> bool {
-    defs(Game::Poe2).iter().any(|d| d.name == name && d.read_only)
+    [Game::Poe2, Game::Poe1].into_iter().any(|g| defs(g).iter().any(|d| d.name == name && d.read_only))
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +680,41 @@ const POE1_TEXT: &[(&str, &str)] = &[
 fn adapt_for_poe1(defs: &mut Vec<ToolDef>) {
     // No attribute nodes in the PoE1 tree.
     defs.retain(|d| d.name != "set_attribute_choice");
+    defs.push(ToolDef {
+        name: "suggest_cluster_jewels",
+        description: "Suggest cluster jewels for the empty cluster jewel sockets the tree can reach. For each size it tries the enchants whose notables score best: the jewel is socketed, its notables allocated and PoB scores the build, which is then put back. Each suggestion carries `base`, `enchant` (and `alsoEnchants` that score the same), `notables`, `socket`, `points` (including the path to a socket not yet allocated), `delta`, `score`, `perPoint` and `raw` item text. Ranked by gain per point. Nothing is changed; apply one with apply_cluster_jewel. Takes a few seconds.".into(),
+        schema: obj(
+            json!({
+                "aim": { "type": "string", "enum": ["balanced", "defence", "damage"], "description": "What to weigh most (default balanced)" },
+                "limit": prop("integer", "How many suggestions to return (default 8)"),
+            }),
+            &[],
+        ),
+        output_schema: None,
+        read_only: true,
+        destructive: false,
+        idempotent: false,
+        open_world: false,
+        slow: true,
+    });
+    defs.push(ToolDef {
+        name: "apply_cluster_jewel",
+        description: "Socket a cluster jewel and allocate its notables: the socket's path is allocated if needed, `item_text` goes in the socket, and each named notable is allocated by its shortest path inside the jewel. Pass a suggestion's `socket`, `raw` and `notables` from suggest_cluster_jewels.".into(),
+        schema: obj(
+            json!({
+                "socket": prop("integer", "Socket node id from suggest_cluster_jewels"),
+                "item_text": prop("string", "The suggestion's raw item text"),
+                "notables": { "type": "array", "items": { "type": "string" }, "description": "Notable names to allocate" },
+            }),
+            &["socket", "item_text"],
+        ),
+        output_schema: Some(write_output()),
+        read_only: false,
+        destructive: false,
+        idempotent: false,
+        open_world: false,
+        slow: false,
+    });
     for d in defs.iter_mut() {
         if let Some((_, text)) = POE1_TEXT.iter().find(|(name, _)| *name == d.name) {
             d.description = (*text).to_string();
@@ -1196,6 +1233,11 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
             };
             read(result)
         }
+        "suggest_cluster_jewels" => read(ctx.call("suggest_cluster_jewels", json!({ "preset": arg_str(args, "aim"), "limit": arg_i64(args, "limit")? }))?),
+        "apply_cluster_jewel" => {
+            let notables: Vec<Value> = arg_list(args, "notables").into_iter().filter(|v| v.as_str().is_some()).collect();
+            stats(ctx.call("apply_cluster_jewel", json!({ "socket": req_i64(args, "socket")?, "raw": req_str(args, "item_text")?, "notables": notables }))?)
+        }
         "optimise_gear" => {
             let slots: Vec<Value> = arg_list(args, "slots").into_iter().filter(|v| v.as_str().is_some()).collect();
             let mut result = ctx.call(
@@ -1402,7 +1444,7 @@ mod tests {
     #[test]
     fn poe1_registry_speaks_poe1() {
         let d = defs(Game::Poe1);
-        assert_eq!(d.len(), 76, "PoE1 tool count changed");
+        assert_eq!(d.len(), 78, "PoE1 tool count changed");
         for (name, _) in POE1_TEXT {
             assert!(d.iter().any(|t| t.name == *name), "POE1_TEXT names {name}, which is not a tool");
         }

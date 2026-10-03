@@ -10,6 +10,8 @@
     type GearOptProgress,
     type GearOptResult,
     type GearProposal,
+    type ClusterSuggestion,
+    type ClusterSuggestions,
     type SanityCheck,
     type SlotInfo,
   } from "$lib/engine.svelte";
@@ -112,6 +114,32 @@
     for (const p of result.proposals) {
       if (!applied.has(p.slot)) await apply(p);
     }
+  }
+
+  let clusterRunning = $state(false);
+  let clusters = $state<ClusterSuggestions | null>(null);
+  let clusterError = $state<string | null>(null);
+  let clusterRev = $state(-1);
+  const clusterStale = $derived(clusters != null && build.rev !== clusterRev);
+
+  async function findClusters() {
+    if (clusterRunning || !build.loaded) return;
+    clusterRunning = true;
+    clusterError = null;
+    try {
+      const r = await engine.suggestClusterJewels(preset, 8);
+      await build.sync();
+      clusters = r;
+      clusterRev = build.rev;
+    } catch (e) {
+      clusterError = String(e);
+    } finally {
+      clusterRunning = false;
+    }
+  }
+
+  async function applyCluster(s: ClusterSuggestion) {
+    await build.run(() => engine.applyClusterJewel(s));
   }
 
   const HEADLINE = $derived<{ key: string; label: string; pct?: boolean }[]>([
@@ -391,6 +419,52 @@
           <div class="dim small pad">{s.slot}: {s.reason}</div>
         {/each}
       </div>
+    {/if}
+    {#if game.isPoe1}
+      <div class="head tree">
+        <span class="title">{m.opt_cluster()}</span>
+      </div>
+      <div class="controls">
+        <div class="ctl run">
+          <button class="btn sm primary" onclick={findClusters} disabled={clusterRunning || running || !build.loaded} title={m.opt_cluster_run_title()}>{clusterRunning ? m.opt_cluster_running() : m.opt_cluster_run()}</button>
+          <span class="dim small">{m.opt_cluster_hint()}</span>
+        </div>
+        {#if clusterError}<div class="err small">{clusterError}</div>{/if}
+      </div>
+      {#if clusters}
+        <div class="results">
+          <div class="ghead">
+            <span>{m.opt_result()}</span>
+            <span class="dim">{m.opt_cluster_result({ count: clusters.suggestions.length, seconds: Math.round(clusters.ms / 100) / 10 })}</span>
+            {#if clusterStale}<span class="warn">{m.opt_cluster_stale()}</span>{/if}
+          </div>
+          {#if clusters.suggestions.length === 0}
+            <div class="dim small pad">{clusters.sockets.length === 0 ? m.opt_cluster_no_sockets() : m.opt_cluster_none()}</div>
+          {/if}
+          {#each clusters.suggestions as s, i (i)}
+            <div class="prop">
+              <div class="phead">
+                <span class="pslot">{s.base}</span>
+                <span class="pbase">{s.enchant}</span>
+                <span class="dim small">{s.slot} · <span class="mono">{s.points}</span> {s.points === 1 ? m.opt_point_one() : m.opt_point_many()}{s.socketAllocated ? "" : ` ${m.opt_cluster_path()}`}</span>
+                <button class="btn sm" onclick={() => applyCluster(s)} disabled={build.busy > 0 || clusterStale}>{m.opt_apply()}</button>
+              </div>
+              <div class="mods mono">
+                {#each s.enchantText as line}<div class="dim">{line}</div>{/each}
+                {#each s.notables as n}<div>{n}</div>{/each}
+              </div>
+              {#if s.alsoEnchants.length}<div class="lookfor"><span class="dim">{m.opt_cluster_also()}</span> {s.alsoEnchants.join(", ")}</div>{/if}
+              <div class="deltas">
+                {#each DELTA_KEYS as d}
+                  {#if s.delta[d.key] !== undefined && Math.abs(s.delta[d.key]) >= 0.5}
+                    <span class="dchip {deltaClass(s.delta[d.key])}"><span class="mono">{fmtDelta(s.delta[d.key], d.pct)}</span> {d.label}</span>
+                  {/if}
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     {/if}
     <div class="head tree">
       <span class="title">{m.opt_tree()}</span>

@@ -1044,6 +1044,33 @@ export interface JewelSuggestParams {
   limit?: number;
 }
 
+export interface ClusterSuggestion {
+  base: string;
+  size: number;
+  enchant: string;
+  enchantText: string[];
+  alsoEnchants: string[];
+  notables: string[];
+  socket: number;
+  slot: string;
+  socketAllocated: boolean;
+  points: number;
+  score: number;
+  perPoint: number;
+  delta: Record<string, number>;
+  raw: string;
+  nodes: number[];
+}
+
+export interface ClusterSuggestions {
+  summary: string;
+  suggestions: ClusterSuggestion[];
+  sockets: { id: number; slot: string; size: number; allocated: boolean; points: number }[];
+  errors?: string[];
+  evaluations: number;
+  ms: number;
+}
+
 export interface ItemSetInfo {
   id: number;
   title: string;
@@ -1786,4 +1813,7 @@ export const engine = {
   gearOptResult: () => call<GearOptResult>("gear_opt_result"),
   /** Every unique jewel scored in every allocated socket, one engine; the assistant's tool runs it across the pool. */
   suggestUniqueJewels: (p: JewelSuggestParams = {}) => call<JewelSuggestions>("suggest_unique_jewels", p),
+  suggestClusterJewels: (preset?: "balanced" | "defence" | "damage", limit?: number) => call<ClusterSuggestions>("suggest_cluster_jewels", { preset, limit }),
+  applyClusterJewel: (s: Pick<ClusterSuggestion, "socket" | "raw" | "notables">) =>
+    call<{ ok: boolean; itemId: number; slot: string }>("apply_cluster_jewel", { socket: s.socket, raw: s.raw, notables: s.notables }),
 };

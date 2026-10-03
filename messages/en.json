@@ -822,6 +822,24 @@
   "opt_if_removed": "if removed ·",
   "opt_depend_on_it": "depend on it",
 
+  "opt_cluster": "Cluster jewels",
+  "opt_cluster_run": "Find cluster jewels",
+  "opt_cluster_running": "Trying jewels…",
+  "opt_cluster_run_title": "Tries cluster jewels in your empty cluster sockets with the aim chosen above. Takes a few seconds.",
+  "opt_cluster_hint": "Uses the aim above. Ranked by gain per passive point.",
+  "opt_cluster_result": [
+    {
+      "declarations": ["input count", "input seconds", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} jewel · {seconds}s", "countPlural=*": "{count} jewels · {seconds}s" }
+    }
+  ],
+  "opt_cluster_stale": "build changed, find again",
+  "opt_cluster_no_sockets": "No empty cluster socket is allocated or reachable on this tree.",
+  "opt_cluster_none": "No cluster jewel gains anything for this build at the points it costs.",
+  "opt_cluster_path": "with the path to the socket",
+  "opt_cluster_also": "Same gain with",
+
   "chat_resize": "Resize assistant panel",
   "chat_resize_title": "Drag to resize · double-click to reset",
   "chat_title": "Assistant",

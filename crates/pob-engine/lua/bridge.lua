@@ -9934,6 +9934,261 @@ M.suggest_unique_jewels = function(p)
 	return M.jewel_finish({ results = results })
 end
 
+M._cluster = {
+	-- The fewest passives each size takes, so every notable is as cheap as it gets.
+	sizes = {
+		{ base = "Large Cluster Jewel", size = 2, nodes = 8, socketLine = "2 Added Passive Skills are Jewel Sockets", notables = 3, keep = 6 },
+		{ base = "Medium Cluster Jewel", size = 1, nodes = 4, socketLine = "1 Added Passive Skill is a Jewel Socket", notables = 2, keep = 6 },
+		{ base = "Small Cluster Jewel", size = 0, nodes = 2, notables = 1, keep = 6 },
+	},
+}
+
+function M._cluster.raw(def, skill, names)
+	local implicits = { "{crafted}Adds " .. def.nodes .. " Passive Skills" }
+	if def.socketLine then implicits[#implicits + 1] = "{crafted}" .. def.socketLine end
+	for _, line in ipairs(skill.enchant) do implicits[#implicits + 1] = "{crafted}" .. line end
+	local lines = { "Rarity: RARE", "Suggested Cluster", def.base, "Item Level: 84", "Implicits: " .. #implicits }
+	for _, line in ipairs(implicits) do lines[#lines + 1] = line end
+	for _, name in ipairs(names) do lines[#lines + 1] = "1 Added Passive Skill is " .. name end
+	return table.concat(lines, "\n")
+end
+
+function M._cluster.sockets(spec)
+	local out = {}
+	for id in pairs(spec.tree.sockets) do
+		local node = spec.nodes[id]
+		local ej = node and node.expansionJewel
+		if ej and (spec.jewels[id] or 0) == 0 and build.itemsTab.sockets[id] then
+			local allocated = spec.allocNodes[id] ~= nil
+			if allocated or node.path then
+				out[#out + 1] = { id = id, size = ej.size, allocated = allocated, cost = allocated and 0 or #node.path, outer = ej.parent == nil }
+			end
+		end
+	end
+	table.sort(out, function(a, b) return a.cost == b.cost and a.id < b.id or a.cost < b.cost end)
+	return out
+end
+
+function M._cluster.subgraphNode(spec, socketId, name)
+	for _, sg in pairs(spec.subGraphs) do
+		if sg.parentSocket and sg.parentSocket.id == socketId then
+			for _, node in ipairs(sg.nodes) do
+				if node.dn == name then return spec.nodes[node.id] end
+			end
+		end
+	end
+end
+
+function M._cluster.trial(socketId, raw, names, fn)
+	local spec, tab = build.spec, build.itemsTab
+	local slot = tab.sockets[socketId]
+	local origSel = slot.selItemId
+	local orig = {}
+	for id in pairs(spec.allocNodes) do orig[id] = true end
+	local ext = copyTable(spec.allocExtendedNodes)
+	local socketWasAllocated = orig[socketId] == true
+	local item = new("Item"):Item(raw)
+	local ok, res = pcall(function()
+		if not socketWasAllocated then spec:AllocNode(spec.nodes[socketId]) end
+		tab:AddItem(item, true)
+		slot:SetSelItemId(item.id)
+		for _, name in ipairs(names) do
+			local node = M._cluster.subgraphNode(spec, socketId, name)
+			if not node then error("the jewel did not add " .. name, 0) end
+			if not node.alloc then spec:AllocNode(node) end
+		end
+		local added = array({})
+		for id in pairs(spec.allocNodes) do
+			if not orig[id] then added[#added + 1] = id end
+		end
+		table.sort(added)
+		return fn(added, item)
+	end)
+	slot:SetSelItemId(origSel)
+	if tab.items[item.id] == item then tab:DeleteItem(item, true) end
+	for id, node in pairs(spec.allocNodes) do
+		if not orig[id] then
+			node.alloc = false
+			spec.allocNodes[id] = nil
+		end
+	end
+	for id in pairs(orig) do
+		local node = spec.nodes[id]
+		if node then
+			node.alloc = true
+			spec.allocNodes[id] = node
+		end
+	end
+	if not socketWasAllocated then spec:BuildClusterJewelGraphs() end
+	spec.allocExtendedNodes = ext
+	wipeTable(spec.allocSubgraphNodes)
+	spec:BuildAllDependsAndPaths()
+	if not ok then error(res, 0) end
+	return res
+end
+
+M.suggest_cluster_jewels = function(p)
+	ensureBuild()
+	if IS_POE2 then error("cluster jewels are a Path of Exile 1 item", 0) end
+	p = p or {}
+	local started = GetTime()
+	local spec = build.spec
+	local w = OPT_PRESETS[p.preset or "balanced"] or OPT_PRESETS.balanced
+	local cfg = { resist = tonumber(p.resist) or 75, chaos = tonumber(p.chaos) or 0, moveSpeed = 1.0, keys = keystone.profile() }
+	local limit = math.max(1, tonumber(p.limit) or 8)
+	local sockets = M._cluster.sockets(spec)
+	if #sockets == 0 then
+		return { summary = "No empty cluster jewel socket is allocated or reachable on this tree.", suggestions = array({}), sockets = array({}), evaluations = 0, ms = 0 }
+	end
+	local calcFunc = build.calcsTab:GetMiscCalculator()
+	local base = optHeadline(withoutFullDPS(calcFunc, {}))
+	local baseScore = optScore(base, base, w, cfg)
+	local evals = 0
+	local function scoreOf(out)
+		evals = evals + 1
+		return optScore(out, base, w, cfg) - baseScore
+	end
+
+	local notables, single = {}, {}
+	for modId, mod in pairs(data.itemMods.JewelCluster) do
+		local name = mod[1] and mod[1]:match("^1 Added Passive Skill is (.+)$")
+		local node = name and spec.tree.clusterNodeMap[name]
+		if node then notables[#notables + 1] = { id = modId, mod = mod, name = name, node = node } end
+	end
+	table.sort(notables, function(a, b) return a.name < b.name end)
+	local function singleScore(n)
+		if single[n.name] == nil then single[n.name] = scoreOf(optHeadline(withoutFullDPS(calcFunc, { addNodes = { [n.node] = true } }))) end
+		return single[n.name]
+	end
+
+	-- Full trials are slow, so only the enchants with the best summed notable scores get one.
+	local candidates = {}
+	for _, def in ipairs(M._cluster.sizes) do
+		local where
+		for _, s in ipairs(sockets) do
+			if s.size >= def.size then
+				where = s
+				break
+			end
+		end
+		local jewel = where and data.clusterJewels.jewels[def.base]
+		if jewel then
+			local ranked = {}
+			for skillId, skill in pairs(jewel.skills) do
+				if not tostring(skill.tag):find("^old_do_not_use") then
+					local probe = new("Item"):Item(M._cluster.raw(def, skill, {}))
+					local tags = { [skill.tag] = true }
+					local eligible = {}
+					for _, n in ipairs(notables) do
+						if probe:CanHaveMod(n.mod, tags) then eligible[#eligible + 1] = n end
+					end
+					for _, n in ipairs(eligible) do singleScore(n) end
+					table.sort(eligible, function(a, b) return single[a.name] > single[b.name] end)
+					local chosen, prefixes, estimate = {}, 0, 0
+					for _, n in ipairs(eligible) do
+						if #chosen >= def.notables or single[n.name] <= 0 then break end
+						local pick = { [skill.tag] = true }
+						for _, c in ipairs(chosen) do
+							for _, t in ipairs(c.mod.tags or {}) do pick[t] = true end
+						end
+						if (n.mod.type ~= "Prefix" or prefixes < 2) and probe:CanHaveMod(n.mod, pick) then
+							chosen[#chosen + 1] = n
+							if n.mod.type == "Prefix" then prefixes = prefixes + 1 end
+							estimate = estimate + single[n.name]
+						end
+					end
+					ranked[#ranked + 1] = { def = def, skillId = skillId, skill = skill, chosen = chosen, estimate = estimate, socket = where }
+				end
+			end
+			table.sort(ranked, function(a, b) return a.estimate == b.estimate and a.skillId < b.skillId or a.estimate > b.estimate end)
+			for i = 1, math.min(def.keep, #ranked) do candidates[#candidates + 1] = ranked[i] end
+		end
+	end
+
+	local suggestions, errors = array({}), array({})
+	for _, c in ipairs(candidates) do
+		local names = {}
+		for _, n in ipairs(c.chosen) do names[#names + 1] = n.name end
+		local raw = M._cluster.raw(c.def, c.skill, names)
+		local ok, res = pcall(M._cluster.trial, c.socket.id, raw, names, function(added)
+			local out = optHeadline(withoutFullDPS(calcFunc, {}))
+			return { out = out, score = scoreOf(out), nodes = added }
+		end)
+		if not ok then
+			errors[#errors + 1] = c.def.base .. " (" .. c.skill.name .. "): " .. tostring(res)
+		elseif res.score > 0 then
+			local points = #res.nodes
+			suggestions[#suggestions + 1] = {
+				base = c.def.base,
+				size = c.def.size,
+				enchant = c.skill.name,
+				enchantText = strArray(c.skill.enchant),
+				notables = strArray(names),
+				socket = c.socket.id,
+				slot = "Jewel " .. c.socket.id,
+				socketAllocated = c.socket.allocated,
+				points = points,
+				score = round3(res.score),
+				perPoint = round3(res.score / math.max(1, points)),
+				delta = jewelDelta(base, res.out),
+				raw = raw,
+				nodes = res.nodes,
+			}
+		end
+	end
+	table.sort(suggestions, function(a, b) return a.perPoint == b.perPoint and a.score > b.score or a.perPoint > b.perPoint end)
+	-- The same jewel under enchants that add nothing for this build is one suggestion.
+	local merged, seen = array({}), {}
+	for _, s in ipairs(suggestions) do
+		local key = s.base .. "|" .. table.concat(s.notables, "|") .. "|" .. s.score
+		if seen[key] then
+			table.insert(seen[key].alsoEnchants, s.enchant)
+		else
+			s.alsoEnchants = array({})
+			seen[key] = s
+			merged[#merged + 1] = s
+		end
+	end
+	suggestions = merged
+	while #suggestions > limit do table.remove(suggestions) end
+	local rows = array({})
+	for _, s in ipairs(sockets) do rows[#rows + 1] = { id = s.id, slot = "Jewel " .. s.id, size = s.size, allocated = s.allocated, points = s.cost } end
+	return {
+		summary = #suggestions == 0 and "No cluster jewel gains anything for this build at the points it costs."
+			or string.format("%d suggestion(s) from %d full trials; ranked by gain per point.", #suggestions, #candidates),
+		suggestions = suggestions,
+		sockets = rows,
+		errors = errors,
+		evaluations = evals,
+		ms = math.floor(GetTime() - started),
+	}
+end
+
+M.apply_cluster_jewel = function(p)
+	ensureBuild()
+	if IS_POE2 then error("cluster jewels are a Path of Exile 1 item", 0) end
+	local spec = build.spec
+	local socketId = tonumber(p and p.socket)
+	local node = socketId and spec.nodes[socketId]
+	if not node or not node.expansionJewel then error("not a cluster jewel socket", 0) end
+	if (spec.jewels[socketId] or 0) ~= 0 then error("that socket already holds a jewel", 0) end
+	if type(p.raw) ~= "string" then error("params.raw (the jewel's item text) is required", 0) end
+	local item = new("Item"):Item(p.raw)
+	if not item.base or not item.clusterJewel then error("the item text is not a cluster jewel", 0) end
+	if not build.itemsTab:IsItemValidForSlot(item, "Jewel " .. socketId) then error(item.baseName .. " does not fit that socket", 0) end
+	if not spec.allocNodes[socketId] then spec:AllocNode(node) end
+	build.itemsTab:AddItem(item, true)
+	build.itemsTab.sockets[socketId]:SetSelItemId(item.id)
+	for _, name in ipairs(type(p.notables) == "table" and p.notables or {}) do
+		local n = M._cluster.subgraphNode(spec, socketId, name)
+		if n and not n.alloc then spec:AllocNode(n) end
+	end
+	spec:AddUndoState()
+	build.itemsTab:AddUndoState()
+	refresh()
+	return { ok = true, itemId = item.id, slot = "Jewel " .. socketId }
+end
+
 -- Exposed for `pobctl eval` scripting: __bridge.tree_click({ id = 123 })
 _G.__bridge = M
 

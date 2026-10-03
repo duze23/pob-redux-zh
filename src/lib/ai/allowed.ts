@@ -39,6 +39,7 @@ export const ALLOWED = new Set([
   // Scores every unique jewel against the build; the one call that answers
   // "which jewel", where equipping them one by one would take a dozen.
   "suggest_unique_jewels",
+  "suggest_cluster_jewels",
   "list_bases",
   "list_affixes",
   // write, approval-gated
@@ -63,6 +64,7 @@ export const ALLOWED = new Set([
   "set_gem_levels",
   "unequip_item",
   "set_flask_active",
+  "apply_cluster_jewel",
   "rollback",
   // Removing a whole skill setup is what "get rid of that skill" means, and
   // the approval gate plus checkpoint cover the missing undo.
