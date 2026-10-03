@@ -2,6 +2,9 @@
   import { untrack } from "svelte";
   import { engine, type CalcEffect, type CalcRow, type CalcSection, type CalcSkillSelection, type CalcSubSection } from "$lib/engine.svelte";
   import { build } from "$lib/state/build.svelte";
+  import { ui } from "$lib/state/ui.svelte";
+  import { modKey } from "$lib/keys";
+  import Kbd from "$lib/components/Kbd.svelte";
   import { game } from "$lib/state/game.svelte";
   import { statusEffectArtUrls } from "$lib/item-art";
   import Icon from "$lib/components/Icon.svelte";
@@ -23,12 +26,21 @@
   const rowShown = (sec: CalcSection, sub: CalcSubSection, row: CalcRow) => !needle || sectionHit(sec) || hit(sub.label) || hit(row.label);
 
   function onKey(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    if (modKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
       e.preventDefault();
       searchEl?.focus();
       searchEl?.select();
     }
   }
+
+  $effect(() => {
+    const j = ui.jump;
+    if (j?.view !== "calcs") return;
+    untrack(() => {
+      ui.jump = null;
+      query = j.label;
+    });
+  });
 
   const SECTION_OPEN_KEY = "pob-redux:calcs-section-open";
   let sectionOpenOverrides = $state<Record<string, boolean>>({});
@@ -350,16 +362,19 @@
 
 <div class="page">
   <div class="toolbar">
-    <input
-      class="input search"
-      type="search"
-      bind:this={searchEl}
-      bind:value={query}
-      placeholder={m.common_search()}
-      aria-label={m.calcs_search_title()}
-      title={m.calcs_search_title()}
-      onkeydown={(e) => e.key === "Escape" && (query = "")}
-    />
+    <span class="hinted">
+      <input
+        class="input search"
+        type="search"
+        bind:this={searchEl}
+        bind:value={query}
+        placeholder={m.common_search()}
+        aria-label={m.calcs_search_title()}
+        title={m.calcs_search_title()}
+        onkeydown={(e) => e.key === "Escape" && (query = "")}
+      />
+      {#if !query}<Kbd keys="Mod+F" hint />{/if}
+    </span>
     <label class="fld-inline skill-picker">
       <span class="label">{m.calcs_socket_group()}</span>
       <select
@@ -965,8 +980,13 @@
     color: var(--fg-0);
     background: color-mix(in oklab, var(--focus) 22%, transparent);
   }
-  .search {
+  .hinted {
+    position: relative;
+    display: flex;
     flex: 0 0 180px;
+  }
+  .search {
+    width: 100%;
     height: 26px;
   }
   .nomatch {

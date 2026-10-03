@@ -12,6 +12,8 @@
   import PobTooltip from "$lib/components/PobTooltip.svelte";
   import { stripPobText } from "$lib/pobtext";
   import TimelessSearch from "$lib/components/TimelessSearch.svelte";
+  import Kbd from "$lib/components/Kbd.svelte";
+  import { modKey } from "$lib/keys";
   import { m } from "$lib/paraglide/messages";
   import { recipeArt } from "$lib/item-art";
 
@@ -392,6 +394,16 @@
     if (scale < 0.2) scale = 0.25;
     invalidate();
   }
+
+  $effect(() => {
+    const j = ui.jump;
+    if (j?.view !== "tree" || !model) return;
+    untrack(() => {
+      ui.jump = null;
+      search = j.name;
+      jumpTo(j.node);
+    });
+  });
 
   /** Enter in the search box: centre on the next match, nearest first. */
   let matchCursor = -1;
@@ -1854,9 +1866,9 @@
     else if (e.key === "a") focusAscendancy();
     else if (e.key === "p") powerOn = !powerOn;
     else if (e.key === "r" && powerOn) showReport = !showReport;
-    else if (e.key === "d" && e.ctrlKey) ui.setTreeStatDiff(!ui.treeStatDiff);
-    else if (e.key === "f" && !e.ctrlKey) fitAll();
-    else if (e.key === "/" || (e.key === "f" && e.ctrlKey)) {
+    else if (e.key === "d" && modKey(e)) ui.setTreeStatDiff(!ui.treeStatDiff);
+    else if (e.key === "f" && !e.ctrlKey && !e.metaKey) fitAll();
+    else if (e.key === "/" || (e.key === "f" && modKey(e))) {
       e.preventDefault();
       searchEl?.focus();
     } else return;
@@ -2108,7 +2120,10 @@
       </div>
     {/if}
     <div class="group">
-      <input class="input search" placeholder={m.tree_search()} bind:value={search} bind:this={searchEl} onkeydown={(e) => e.key === "Enter" && jumpToMatch()} />
+      <span class="hinted">
+        <input class="input search" placeholder={m.tree_search()} bind:value={search} bind:this={searchEl} onkeydown={(e) => e.key === "Enter" && jumpToMatch()} />
+        {#if !search}<Kbd keys="Mod+F" hint />{/if}
+      </span>
       {#if matches.size}<span class="dim num">{matches.size}</span>{/if}
       <button class="btn sm ghost" onclick={focusClass} title={m.tree_class_title()}>{m.tree_class()}</button>
       <button class="btn sm ghost" onclick={focusAscendancy} disabled={!currentAsc} title={currentAsc ? m.tree_ascendancy_title() : m.tree_ascendancy_none()}>{m.tree_ascendancy()}</button>
@@ -2446,6 +2461,10 @@
   .search {
     width: 220px;
     height: 24px;
+  }
+  .hinted {
+    position: relative;
+    display: flex;
   }
   .spec {
     width: 220px;

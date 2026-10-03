@@ -3,6 +3,10 @@
   import { build } from "$lib/state/build.svelte";
   import PobText from "$lib/components/PobText.svelte";
   import { stripPobText } from "$lib/pobtext";
+  import { untrack } from "svelte";
+  import { ui } from "$lib/state/ui.svelte";
+  import { modKey } from "$lib/keys";
+  import Kbd from "$lib/components/Kbd.svelte";
   import { m } from "$lib/paraglide/messages";
 
   let options = $state<ConfigOption[]>([]);
@@ -123,12 +127,24 @@
 
   let filterEl = $state<HTMLInputElement>();
   function onKey(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+    if (modKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
       e.preventDefault();
       filterEl?.focus();
       filterEl?.select();
     }
   }
+
+  $effect(() => {
+    const j = ui.jump;
+    if (j?.view !== "config" || !options.length) return;
+    untrack(() => {
+      ui.jump = null;
+      filter = j.label;
+      const o = options.find((x) => stripPobText(x.label ?? x.var).replace(/:$/, "") === j.label);
+      const name = o?.section ?? m.config_section_general();
+      if (collapsed.has(name)) saveCollapsed(new Set([...collapsed].filter((n) => n !== name)));
+    });
+  });
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -172,7 +188,10 @@
     >
     <button class="btn sm ghost" disabled={sets.length <= 1} onclick={() => activeSet && build.run(() => engine.deleteConfigSet(activeSet.id))}>{m.common_delete()}</button>
     <span class="vr"></span>
-    <input class="input" placeholder={m.config_filter()} bind:value={filter} bind:this={filterEl} title="Ctrl+F" />
+    <span class="hinted">
+      <input class="input" placeholder={m.config_filter()} bind:value={filter} bind:this={filterEl} />
+      {#if !filter}<Kbd keys="Mod+F" hint />{/if}
+    </span>
     <label class="chk small" title={m.config_relevant_only_title()}>
       <input type="checkbox" bind:checked={relevantOnly} disabled={!visibility} />
       {m.config_relevant_only()}
@@ -327,6 +346,10 @@
   }
   .toolbar .input {
     width: 220px;
+  }
+  .hinted {
+    position: relative;
+    display: flex;
   }
   .setsel {
     width: 160px;

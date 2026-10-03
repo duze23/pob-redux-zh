@@ -3,6 +3,7 @@
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { engine, gemDpsParallel, type GemSearchRow, type SkillEntry, type SkillsOptions, type SocketGroup, type Tooltip } from "$lib/engine.svelte";
   import { build } from "$lib/state/build.svelte";
+  import { ui } from "$lib/state/ui.svelte";
   import { game } from "$lib/state/game.svelte";
   import PobText from "$lib/components/PobText.svelte";
   import PobTooltip from "$lib/components/PobTooltip.svelte";
@@ -13,6 +14,14 @@
   const skillSets = $derived(build.skills?.skillSets ?? []);
   let selectedIdx = $state(1);
   const sel = $derived<SocketGroup | undefined>(groups.find((g) => g.index === selectedIdx) ?? groups[0]);
+  $effect(() => {
+    const j = ui.jump;
+    if (j?.view !== "skills") return;
+    untrack(() => {
+      ui.jump = null;
+      selectedIdx = j.group;
+    });
+  });
   const selSkill = $derived<SkillEntry | undefined>(sel?.skills.find((s) => s.index === (sel?.mainActiveSkill ?? 1)) ?? sel?.skills[0]);
 
   let renamingSet = $state(false);

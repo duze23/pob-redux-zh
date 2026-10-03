@@ -15,6 +15,9 @@
     type TooltipLine,
   } from "$lib/engine.svelte";
   import { build } from "$lib/state/build.svelte";
+  import { ui } from "$lib/state/ui.svelte";
+  import { modKey } from "$lib/keys";
+  import Kbd from "$lib/components/Kbd.svelte";
   import { game } from "$lib/state/game.svelte";
   import EquipmentGrid from "$lib/components/EquipmentGrid.svelte";
   import PobText from "$lib/components/PobText.svelte";
@@ -467,6 +470,15 @@
     selectedItem = id;
   }
 
+  $effect(() => {
+    const j = ui.jump;
+    if (j?.view !== "items") return;
+    untrack(() => {
+      ui.jump = null;
+      selectItem(j.item);
+    });
+  });
+
   // PoB's own Ctrl+D: the "removing this item will give you" lines in item tooltips.
   let statDiff = $state<boolean | null>(null);
   engine.statDifferences().then((r) => (statDiff = r.show)).catch(() => {});
@@ -477,8 +489,15 @@
       tip = null;
     } catch {}
   }
+  let dbSearchEl = $state<HTMLInputElement>();
   function onKey(e: KeyboardEvent) {
     if (e.defaultPrevented) return;
+    if (modKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f" && !editOpen && !craftOpen && !traderOpen && buySimilarFor == null && !document.querySelector('[aria-modal="true"]')) {
+      e.preventDefault();
+      dbSearchEl?.focus();
+      dbSearchEl?.select();
+      return;
+    }
     const target = e.target;
     if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"]')) return;
     if (document.querySelector('[aria-modal="true"]')) return;
@@ -826,7 +845,10 @@
         <span class="dim num">{dbTotal}</span>
       </div>
       <div class="dbbar">
-        <input class="input" placeholder={m.common_search()} bind:value={dbQuery} />
+        <span class="hinted">
+          <input class="input" placeholder={m.common_search()} bind:value={dbQuery} bind:this={dbSearchEl} />
+          {#if !dbQuery}<Kbd keys="Mod+F" hint />{/if}
+        </span>
         <select class="select typesel" bind:value={dbType}>
           <option value="">{m.common_all_types()}</option>
           {#each dbTypes as t}
@@ -1148,9 +1170,14 @@
     padding: 8px 10px;
     border-bottom: 1px solid var(--line-0);
   }
-  .dbbar .input {
+  .dbbar .hinted {
+    position: relative;
+    display: flex;
     flex: 1 1 120px;
     min-width: 90px;
+  }
+  .dbbar .input {
+    width: 100%;
   }
   .typesel {
     flex: 0 1 170px;

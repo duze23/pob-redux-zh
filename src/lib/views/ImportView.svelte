@@ -45,6 +45,8 @@
   import { planner, AUTHOR_KEY } from "$lib/state/planner.svelte";
   import { game } from "$lib/state/game.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import Kbd from "$lib/components/Kbd.svelte";
+  import { modKey } from "$lib/keys";
   import { m } from "$lib/paraglide/messages";
 
   let { paths }: { paths: AppPaths | null } = $props();
@@ -53,6 +55,13 @@
   let builds = $state<BuildEntry[]>([]);
   let folders = $state<string[]>([]);
   let filter = $state("");
+  let filterEl = $state<HTMLInputElement>();
+  function onFindKey(e: KeyboardEvent) {
+    if (!modKey(e) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "f" || document.querySelector('[aria-modal="true"]')) return;
+    e.preventDefault();
+    filterEl?.focus();
+    filterEl?.select();
+  }
   let sort = $state<"modified" | "name" | "level" | "class">("modified");
   let flash = $state<string | null>(null);
   let fetching = $state(false);
@@ -832,6 +841,8 @@
   }
 </script>
 
+<svelte:window onkeydown={onFindKey} />
+
 {#snippet buildRow(b: BuildEntry, showFolder: boolean)}
   <div class="row">
     {#if renaming === b.path}
@@ -904,7 +915,10 @@
 <div class="page">
   <section class="col">
     <div class="toolbar">
-      <input class="input" placeholder={m.import_filter()} bind:value={filter} />
+      <span class="hinted">
+        <input class="input" placeholder={m.import_filter()} bind:value={filter} bind:this={filterEl} />
+        {#if !filter}<Kbd keys="Mod+F" hint />{/if}
+      </span>
       <select class="select" bind:value={sort} title={m.import_sort()}>
         <option value="modified">{m.import_sort_recent()}</option>
         <option value="name">{m.import_sort_name()}</option>
@@ -1379,6 +1393,12 @@
     border-bottom: 1px solid var(--line-0);
   }
   .toolbar .input {
+    flex: 1;
+    min-width: 100px;
+  }
+  .toolbar .hinted {
+    position: relative;
+    display: flex;
     flex: 1;
     min-width: 100px;
   }

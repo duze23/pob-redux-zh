@@ -8,6 +8,13 @@ const LAYOUT_MIN_W = 1100;
 const LAYOUT_MIN_H = 680;
 
 export type Dock = "top" | "bottom";
+/** Something the command palette asked a view to show; the view clears it once shown. */
+export type Jump =
+  | { view: "tree"; node: number; name: string }
+  | { view: "items"; item: number }
+  | { view: "skills"; group: number }
+  | { view: "config"; label: string }
+  | { view: "calcs"; label: string };
 export type Theme = "system" | "dark" | "wraeclast" | "light";
 export const SCALE_MIN = 0.75;
 export const SCALE_MAX = 2;
@@ -29,6 +36,8 @@ class UiStore {
   treeWeaponSet = $state<WeaponSetMode>(0);
   treeStatDiff = $state(true);
   treeAscCentre = $state(true);
+  paletteOpen = $state(false);
+  jump = $state<Jump | null>(null);
 
   private systemLight = window.matchMedia("(prefers-color-scheme: light)");
   private systemContrast = window.matchMedia("(prefers-contrast: more)");

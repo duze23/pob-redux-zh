@@ -66,6 +66,9 @@ Tree, skills, items, calcs, config, notes, party and builds are all here, with P
 breakdowns. Calcs sorts PoB's sections into offence, defence and other, with DPS, EHP and the
 largest hit you can take at the top. Your buffs and the curses on the enemy show as game icons.
 
+Ctrl+K (Cmd+K on macOS) opens a search for commands, tabs, saved builds and everything in the open
+build: notables and keystones, items, skills, config options and calcs rows. Pick one to go straight to it.
+
 ### Optimize
 
 Reviews the build and lists what is wrong, worst first, with a fix for each. It can
@@ -81,7 +84,7 @@ skills and config.
 ### Assistant
 
 An optional chat panel that answers questions about the open build and can change it. It works in
-both games; Path of Exile 1 support is new and marked beta. Open it from the chat icon in the status bar or with Ctrl+K. It runs
+both games; Path of Exile 1 support is new and marked beta. Open it from the chat icon in the status bar or with Ctrl+L. It runs
 through a coding agent on your computer, signed in to your own plan: Claude Code, Codex, Cursor, Grok,
 OpenCode or Google Antigravity (which the app downloads for you). It can also use a model you run with Ollama.
 

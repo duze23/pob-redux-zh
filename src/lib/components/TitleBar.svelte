@@ -6,6 +6,7 @@
   import { appOptions } from "$lib/state/options.svelte";
   import { game, GAMES, GAME_SHORT, GAME_LABEL, type Game } from "$lib/state/game.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import Kbd from "$lib/components/Kbd.svelte";
   import { m } from "$lib/paraglide/messages";
 
   import LogoMark from "$lib/components/LogoMark.svelte";
@@ -166,6 +167,16 @@
 
   <div class="spacer" data-tauri-drag-region></div>
 
+  <div class="findcell">
+    {#if build.loaded}
+      <button class="find" title={m.palette_title()} onclick={() => (ui.paletteOpen = true)}>
+        <Icon name="magnifying-glass" size={12} />
+        <span>{m.palette_button()}</span>
+        <Kbd keys="Mod+K" />
+      </button>
+    {/if}
+  </div>
+
   <div class="controls">
     <button
       class="wc opts"
@@ -199,7 +210,7 @@
   .titlebar {
     height: var(--titlebar-h);
     display: grid;
-    grid-template-columns: auto auto minmax(0, auto) minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, auto) minmax(0, 1fr) auto auto;
     align-items: stretch;
     background: var(--bg-1);
     border-bottom: 1px solid var(--line-0);
@@ -349,6 +360,30 @@
   .controls {
     display: flex;
     -webkit-app-region: no-drag;
+  }
+  .findcell {
+    display: flex;
+    align-items: center;
+    padding-right: 6px;
+    -webkit-app-region: no-drag;
+  }
+  .find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 6px 0 8px;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-1);
+    background: var(--bg-1);
+    color: var(--fg-3);
+    font: inherit;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+  }
+  .find:hover {
+    background: var(--bg-hover);
+    color: var(--fg-1);
   }
   .wc {
     appearance: none;

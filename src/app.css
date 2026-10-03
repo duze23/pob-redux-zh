@@ -386,6 +386,13 @@ label:has(input:disabled) {
 .textarea::placeholder {
   color: var(--fg-3);
 }
+.hinted {
+  position: relative;
+  display: flex;
+}
+.hinted > .input {
+  padding-right: 54px;
+}
 /* The dropdown list is drawn by the platform, which paints an unstyled option
    on its own light ground regardless of color-scheme. Giving options an
    explicit colour is what keeps an open select dark. */
