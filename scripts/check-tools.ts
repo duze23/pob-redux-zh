@@ -8,6 +8,7 @@
  * that is not in ALLOWED (loaded never, silently), an ALLOWED name that no
  * longer exists in Rust, and a non-core tool find_tools cannot reach.
  */
+import { readFileSync } from "node:fs";
 import { findTools } from "../src/lib/ai/tools";
 import { listTools, toDefs } from "./mcp-tools";
 
@@ -24,8 +25,14 @@ const check = (ok: boolean, good: string, bad: string) => {
 const notAllowed = [...CORE].filter((n) => !ALLOWED.has(n));
 check(!notAllowed.length, "CORE is a subset of ALLOWED", `CORE names not in ALLOWED: ${notAllowed.join(", ")}`);
 
-const gone = [...ALLOWED].filter((n) => !tools.some((t) => t.name === n));
+// The live registry is the open game's; a name only the other game has is still declared in tools.rs.
+const declared = new Set(
+  [...readFileSync(new URL("../src-tauri/src/tools.rs", import.meta.url), "utf8").matchAll(/\b(?:ro|rw|del)\(\s*"([a-z_0-9]+)"|\bname: "([a-z_0-9]+)"/g)].map((m) => m[1] ?? m[2]),
+);
+const missing = [...ALLOWED].filter((n) => !tools.some((t) => t.name === n));
+const gone = missing.filter((n) => !declared.has(n));
 check(!gone.length, "every ALLOWED name exists in the registry", `ALLOWED names with no tool: ${gone.join(", ")}`);
+if (missing.length > gone.length) console.log(`     (other game only: ${missing.filter((n) => declared.has(n)).join(", ")})`);
 
 const unreachable = defs.filter((d) => !CORE.has(d.name) && !findTools(defs, d.name).some((f) => f.name === d.name));
 check(!unreachable.length, "every non-core tool is reachable by name", `unreachable by name: ${unreachable.map((d) => d.name).join(", ")}`);
