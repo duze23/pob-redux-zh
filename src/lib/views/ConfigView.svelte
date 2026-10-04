@@ -63,6 +63,51 @@
     return out;
   });
 
+  const CARD_MIN = 380;
+  const GAP = 14;
+  let cardsW = $state(0);
+  let heights = $state<Record<string, number>>({});
+
+  // Placed by hand: WebKitGTK does not rebalance CSS columns when the cards arrive after first layout.
+  const layout = $derived.by(() => {
+    const cols = Math.max(1, Math.floor((cardsW + GAP) / (CARD_MIN + GAP)));
+    const width = (cardsW - GAP * (cols - 1)) / cols;
+    const hs = sections.map((s) => (heights[s.name] ?? 0) + GAP);
+    const fits = (cap: number) => {
+      let used = 1;
+      let y = 0;
+      for (const h of hs) {
+        if (y && y + h > cap) {
+          used++;
+          y = 0;
+        }
+        y += h;
+      }
+      return used <= cols;
+    };
+    let lo = Math.max(0, ...hs);
+    let hi = hs.reduce((a, b) => a + b, 0);
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (fits(mid)) hi = mid;
+      else lo = mid + 1;
+    }
+    const pos: Record<string, { x: number; y: number }> = {};
+    let col = 0;
+    let y = 0;
+    let bottom = 0;
+    sections.forEach((s, i) => {
+      if (y && y + hs[i] > lo) {
+        col++;
+        y = 0;
+      }
+      pos[s.name] = { x: col * (width + GAP), y };
+      y += hs[i];
+      bottom = Math.max(bottom, y);
+    });
+    return { width, pos, height: Math.max(0, bottom - GAP) };
+  });
+
   function set(o: ConfigOption, value: unknown) {
     build.run(() => engine.setConfig(o.var, value));
   }
@@ -259,10 +304,11 @@
     {#if sections.length === 0}
       <p class="dim small empty">{m.config_no_match()}</p>
     {/if}
-    <div class="cards">
+    <div class="cards" bind:clientWidth={cardsW} style:height={`${layout.height}px`}>
       {#each sections as sec (sec.name)}
         {@const changed = sec.items.filter((o) => isChanged(o, config[o.var])).length}
-        <section class="card">
+        {@const p = layout.pos[sec.name]}
+        <section class="card" bind:offsetHeight={heights[sec.name]} style:width={`${layout.width}px`} style:left={`${p.x}px`} style:top={`${p.y}px`}>
           <button class="chead" aria-expanded={!collapsed.has(sec.name)} onclick={() => toggle(sec.name)}>
             <span class="caret" class:open={!collapsed.has(sec.name)}>▸</span>
             <span class="cname">{sec.name}</span>
@@ -372,12 +418,12 @@
     margin: 4px 2px 14px;
   }
   .cards {
-    columns: 380px;
-    column-gap: 14px;
+    position: relative;
+  }
+  .cards > .card {
+    position: absolute;
   }
   .card {
-    break-inside: avoid;
-    margin-bottom: 14px;
     background: var(--bg-1);
     border: 1px solid var(--line-1);
     border-radius: var(--r-2);
