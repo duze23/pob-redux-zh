@@ -173,7 +173,11 @@
       onmouseenter: (e: MouseEvent) => open(e, false),
       onmouseleave: () => breakdowns?.leave(),
       onclick: (e: MouseEvent) => open(e, true),
-      onkeydown: (e: KeyboardEvent) => e.key === "Enter" && open(e, true),
+      onkeydown: (e: KeyboardEvent) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        open(e, true);
+      },
     };
   }
 
@@ -332,7 +336,7 @@
         <div class="ph"><span class="t">{m.ov_defences()}</span><span class="s">{m.ov_defences_sum()}</span></div>
         <div class="hits">
           {#each hits as h (h.key)}
-            <div class="hit" class:weak={weakest?.key === h.key} style:color={h.color} {...bd(h.key)}>
+            <div class="hit" class:weak={weakest?.key === h.key} style:color={h.color} title={weakest?.key === h.key ? m.ov_lowest_hit() : undefined} {...bd(h.key)}>
               <span class="k">{h.label}</span>
               <span class="v num">{fmt(h.value)}</span>
               {@render pin(h.key)}
@@ -571,7 +575,7 @@
     box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--accent) 70%, transparent);
     transition: box-shadow 160ms ease;
   }
-  .tile:hover {
+  .tile[data-bd]:hover {
     box-shadow: inset 0 -4px 0 var(--accent);
   }
   .tile:last-child {

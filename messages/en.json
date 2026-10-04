@@ -232,6 +232,7 @@
   "ov_health_ok": "Nothing to fix",
   "ov_defences": "Defences",
   "ov_defences_sum": "largest hit you survive",
+  "ov_lowest_hit": "The smallest of your maximum hits",
   "ov_evasion": "Evasion",
   "ov_armour": "Armour",
   "ov_block": "Block",
