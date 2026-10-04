@@ -570,6 +570,34 @@ export function parseTree(version: string, json: string): TreeModel {
   };
 }
 
+/** An ascendancy's plate, preferring the one under `className` when two share a name. */
+export function ascendancyPlate(M: TreeModel, className: string | null, name: string): TAscendancy | undefined {
+  return M.classes.find((c) => c.name === className)?.ascendancies.find((a) => a.name === name) ?? M.classes.flatMap((c) => c.ascendancies).find((a) => a.name === name);
+}
+
+/** An ascendancy's drawable nodes; PoE1's retired ones and bloodline Warden's sit off the plate. */
+export function plateNodes(M: TreeModel, plate: TAscendancy): TNode[] {
+  // PoE1's Warden nodes are tagged "Raider"; PoE2 variants use the tag of the one they replace.
+  const tags = new Set([plate.name, plate.id, plate.replace]);
+  return [...M.nodes.values()].filter(
+    (n) => n.asc !== null && tags.has(n.asc) && !n.hidden && n.kind !== "classStart" && n.kind !== "onlyImage" && Math.hypot(n.x - plate.x, n.y - plate.y) <= plate.half * 1.2,
+  );
+}
+
+/** Hover targets over a ClassArt portrait of `size` px, which fits the plate's half width to its radius. */
+export function portraitPins(M: TreeModel, plate: TAscendancy, size: number): { node: TNode; notable: boolean; left: number; top: number; size: number }[] {
+  if (!plate.half) return [];
+  const k = size / 2 / plate.half;
+  const pins = plateNodes(M, plate)
+    .filter((n) => n.kind === "notable" || n.kind === "normal")
+    .map((node) => ({ node, notable: node.kind === "notable", left: size / 2 + (node.x - plate.x) * k, top: size / 2 + (node.y - plate.y) * k, size: 6 }));
+  const notables = pins.filter((p) => p.notable);
+  // No wider than the gap to the nearest notable, so targets don't overlap.
+  for (const p of notables) p.size = Math.min(13, ...notables.filter((q) => q !== p).map((q) => Math.hypot(p.left - q.left, p.top - q.top)));
+  // Notables last, so they sit above the small nodes.
+  return [...pins.filter((p) => !p.notable), ...notables];
+}
+
 /** The offset that puts an ascendancy's plate on its class hub, where PoE2 shows it; null in PoE1. */
 export function ascendancyShift(M: TreeModel, name: string | null): { asc: TAscendancy; dx: number; dy: number } | null {
   if (!name) return null;

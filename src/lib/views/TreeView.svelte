@@ -10,6 +10,7 @@
   import { loadTree } from "$lib/tree/load";
   import PobText from "$lib/components/PobText.svelte";
   import PobTooltip from "$lib/components/PobTooltip.svelte";
+  import NodeTooltip from "$lib/components/NodeTooltip.svelte";
   import { stripPobText } from "$lib/pobtext";
   import TimelessSearch from "$lib/components/TimelessSearch.svelte";
   import Kbd from "$lib/components/Kbd.svelte";
@@ -2444,75 +2445,38 @@
       {@const ov = overrides[String(hover.id)]}
       {@const socketed = hover.kind === "socket" ? sockets.get(hover.id) : undefined}
       {@const notCalc = new Set(build.tree?.unsupported?.[String(hover.id)] ?? [])}
-      <div class="tip" bind:this={tipEl} style:left={`${tipPlacement.node}px`} style:top={`${Math.max(8, Math.min(mouse.y + 18, h - tipH - 8))}px`}>
-        <div class="tip-head">
-          <span class="tip-name" class:key={hover.kind === "keystone"} class:notable={hover.kind === "notable"}>{ov?.name ?? hover.name}</span>
-          <span class="label">{hover.asc ?? hover.kind}</span>
-        </div>
-        {#if socketed}
-          <div class="tip-stat">
-            <span class="dim">{m.tree_socketed()}</span>
-            <span class="rarity" data-rarity={socketed.rarity ?? ""}>{socketed.title ?? socketed.name}</span>
-          </div>
-        {/if}
-        {#if hoverGrant}
-          <div class="tip-stat">
-            <span class="dim">{m.tree_granted_by()}</span>
-            <span class="rarity" data-rarity={hoverGrant.rarity ?? ""}>{hoverGrant.source ?? m.tree_granted_unknown()}</span>{#if hoverGrant.slot}<span class="dim"> ({hoverGrant.slot})</span>{/if}
-          </div>
-        {/if}
-        {#each ov?.stats?.length ? ov.stats : hover.stats as s}
-          {@const nc = notCalc.size > 0 && s.split("\n").some((l) => notCalc.has(l))}
-          <div class="tip-stat" class:nc>{s}{#if nc}<span class="ncnote">{` ${m.not_calculated()}`}</span>{/if}</div>
-        {/each}
-        {#if hover.masteryEffects && !allocated.has(hover.id)}
-          {#each hover.masteryEffects as e (e.effect)}
-            <div class="tip-stat dim">{e.stats.join(" / ")}</div>
-          {/each}
-        {/if}
-        {#if hover.flavour}
-          <div class="tip-flav">{hover.flavour}</div>
-        {/if}
-        {#if hoverRecipe}
-          <div class="tip-recipe">
-            <span class="dim">{m.tree_anoint()}</span>
-            {#each hoverRecipe as r, i (i)}
-              <span class="recipe-item" title={r.name}>{#if r.url}<img src={r.url} alt="" />{/if}{r.word}</span>
-            {/each}
-          </div>
-        {/if}
-        {#if hoverBlocked}
-          <div class="tip-warn">{hoverBlocked}</div>
-        {/if}
-        {#if ui.treeStatDiff && statDiff && statDiff.id === hover.id}
-          <div class="tip-diff">
-            {#if statDiff.changes === 0}
-              <div class="dim">{m.tree_no_changes()}</div>
-            {:else}
-              {#each statDiff.lines as l}
-                <div class:head={l.head}><PobText text={l.text} /></div>
-              {/each}
-            {/if}
-          </div>
-        {/if}
-        <div class="tip-foot num">
-          {#if allocated.has(hover.id)}
-            {@const set = weaponSets.get(hover.id)}
+      <NodeTooltip
+        node={hover}
+        bind:el={tipEl}
+        left={tipPlacement.node}
+        top={Math.max(8, Math.min(mouse.y + 18, h - tipH - 8))}
+        override={ov}
+        {socketed}
+        grant={hoverGrant}
+        {notCalc}
+        showMastery={!allocated.has(hover.id)}
+        recipe={hoverRecipe}
+        blocked={hoverBlocked}
+        diff={ui.treeStatDiff && statDiff && statDiff.id === hover.id ? statDiff : null}
+      >
+        {#snippet foot()}
+          {@const node = hover!}
+          {#if allocated.has(node.id)}
+            {@const set = weaponSets.get(node.id)}
             <span style:color={set === 1 ? "var(--bad)" : "var(--ok)"}>{set ? m.tree_in_weapon_set({ set: set === 1 ? "I" : "II" }) : m.tree_allocated()}</span>
             {#if !hoverBlocked}
-              <span class="dim">{hoverDep.size > 1 ? m.tree_click_removes({ count: hoverDep.size }) : m.tree_click_to_remove()}{hover.isAttribute ? m.tree_right_click_switch() : hover.kind === "mastery" ? m.tree_right_click_effect() : ""}</span>
+              <span class="dim">{hoverDep.size > 1 ? m.tree_click_removes({ count: hoverDep.size }) : m.tree_click_to_remove()}{node.isAttribute ? m.tree_right_click_switch() : node.kind === "mastery" ? m.tree_right_click_effect() : ""}</span>
             {/if}
           {:else if hoverCost != null}
             <span>{m.tree_point_cost({ count: hoverCost })}</span>
             {#if !hoverBlocked}
-              <span class="dim">{shiftDown && trace.length ? m.tree_tracing() : hover.kind === "mastery" ? m.tree_choose_effect() : m.tree_click_allocate()}</span>
+              <span class="dim">{shiftDown && trace.length ? m.tree_tracing() : node.kind === "mastery" ? m.tree_choose_effect() : m.tree_click_allocate()}</span>
             {/if}
           {:else if !hoverBlocked}
             <span class="dim">…</span>
           {/if}
-          <span class="dim">#{hover.id}</span>
-        </div>
-      </div>
+        {/snippet}
+      </NodeTooltip>
       {#if socketed && jewelTip && tipPlacement.showJewel}
         {@const r = wrap?.getBoundingClientRect()}
         <PobTooltip lines={jewelTip.lines} header={jewelTip.header} itemArt={jewelTip.itemArt} x={(r?.left ?? 0) + tipPlacement.jewel} y={(r?.top ?? 0) + Math.min(mouse.y + 18, h - 60)} width={jewelTipW} />
@@ -2930,116 +2894,5 @@
     gap: 6px;
     justify-content: flex-end;
     flex-wrap: wrap;
-  }
-  .tip {
-    position: absolute;
-    width: max-content;
-    min-width: min(320px, calc(100% - 16px));
-    max-width: min(540px, calc(100% - 16px));
-    max-height: calc(100% - 16px);
-    overflow: hidden;
-    padding: 10px 12px;
-    background: color-mix(in srgb, var(--bg-1) 94%, transparent);
-    border: 1px solid var(--line-1);
-    border-radius: var(--r-2);
-    box-shadow: var(--shadow-pop);
-    pointer-events: none;
-    font-size: var(--fs-sm);
-  }
-  .tip-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-  .tip-name {
-    font-weight: 600;
-    color: var(--fg-0);
-  }
-  .tip-name.key {
-    color: var(--c-rare);
-  }
-  .tip-name.notable {
-    color: var(--c-currency);
-  }
-  .tip-stat {
-    color: var(--c-magic);
-    line-height: 1.35;
-    white-space: pre-line;
-  }
-  .tip-stat.nc {
-    color: var(--bad);
-  }
-  .ncnote {
-    color: var(--fg-3);
-  }
-  .tip-stat .rarity {
-    color: var(--fg-0);
-  }
-  .tip-stat .rarity[data-rarity="UNIQUE"] {
-    color: var(--c-unique);
-  }
-  .tip-stat .rarity[data-rarity="RARE"] {
-    color: var(--c-rare);
-  }
-  .tip-stat .rarity[data-rarity="MAGIC"] {
-    color: var(--c-magic);
-  }
-  .tip-flav {
-    margin-top: 6px;
-    color: var(--c-unique);
-    font-style: italic;
-    font-size: var(--fs-xs);
-  }
-  .tip-recipe {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 10px;
-    margin-top: 6px;
-    font-size: var(--fs-xs);
-  }
-  .recipe-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    color: var(--fg-1);
-  }
-  .recipe-item img {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-  }
-  .tip-warn {
-    margin-top: 6px;
-    color: var(--warn);
-    font-size: var(--fs-xs);
-  }
-  .tip-diff {
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid var(--line-0);
-    font-family: var(--font-mono);
-    font-size: var(--fs-xs);
-    line-height: 1.45;
-  }
-  .tip-diff .head {
-    margin-top: 4px;
-    color: var(--fg-1);
-    font-family: var(--font-ui);
-  }
-  .tip-diff .head:first-child {
-    margin-top: 0;
-  }
-  .tip-foot {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid var(--line-0);
-    font-size: var(--fs-xs);
-    color: var(--fg-1);
   }
 </style>
