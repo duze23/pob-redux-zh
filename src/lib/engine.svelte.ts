@@ -1588,6 +1588,7 @@ export const engine = {
   getBuild: () => call<BuildInfo>("get_build"),
   getSidebar: () => call<Sidebar>("get_sidebar"),
   sidebarBreakdown: (rowIndex: number) => call<{ sections: BreakdownSection[]; rev: number }>("sidebar_breakdown", { rowIndex }),
+  statBreakdown: (stat: string, actor?: "player" | "minion") => call<{ sections: BreakdownSection[]; rev: number }>("stat_breakdown", { stat, actor }),
   calcSections: (actor?: "player" | "minion") => call<{ sections: CalcSection[]; rev: number }>("calc_sections", { actor }),
   calcEffects: (actor?: "player" | "minion") => call<{ effects: CalcEffect[]; rev: number }>("calc_effects", { actor }),
   calcSkill: (patch?: { group?: number; activeSkill?: number }) => call<CalcSkillSelection>("calc_skill", patch ?? {}),

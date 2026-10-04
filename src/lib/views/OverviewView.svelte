@@ -11,6 +11,9 @@
   import EquipmentGrid from "$lib/components/EquipmentGrid.svelte";
   import PobTooltip from "$lib/components/PobTooltip.svelte";
   import NodeTooltip from "$lib/components/NodeTooltip.svelte";
+  import CalcBreakdownWindows from "$lib/components/CalcBreakdownWindows.svelte";
+  import Icon from "$lib/components/Icon.svelte";
+  import { calcBreakdownKey, type StatBreakdownRef } from "$lib/calc-breakdown";
   import { m } from "$lib/paraglide/messages";
 
   const FIELDS = [
@@ -65,9 +68,9 @@
 
   const headline = $derived.by(() => {
     for (const [k, label] of [["FullDPS", m.ov_dps()], ["CombinedDPS", m.ov_dps()], ["TotalDPS", m.ov_dps()], ["TotalDotDPS", m.ov_dot_dps()], ["AverageDamage", m.ov_average_damage()], ["AverageHit", m.ov_average_hit()]] as const) {
-      if (n(k) > 0) return { value: n(k), label };
+      if (n(k) > 0) return { key: k as string | null, value: n(k), label };
     }
-    return { value: 0, label: m.ov_dps() };
+    return { key: null, value: 0, label: m.ov_dps() };
   });
 
   function go(view: ViewId, jump?: Jump) {
@@ -115,6 +118,10 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     nodeTip = { node, x: r.right + 10, y: r.top - 8 };
   }
+  function nodeTipFor(e: MouseEvent | FocusEvent, id: number) {
+    const node = model?.nodes.get(id);
+    if (node) showNodeTip(e, node);
+  }
   $effect(() => {
     const t = nodeTip;
     const h = nodeTipEl?.offsetHeight ?? 0;
@@ -143,6 +150,33 @@
   );
   const weakest = $derived(hits.reduce((lo, h) => (h.value > 0 && (lo === null || h.value < lo.value) ? h : lo), null as (typeof hits)[number] | null));
 
+  let breakdowns = $state<ReturnType<typeof CalcBreakdownWindows>>();
+  let pinnedKeys = $state(new Set<string>());
+  const bdLabels = $derived.by(() => {
+    const out = new Map<string, string>();
+    for (const r of build.sidebar?.rows ?? []) {
+      if (r.stat && r.hasBreakdown && r.actor !== "minion" && !out.has(r.stat)) out.set(r.stat, stripPobText(r.lhs ?? "").replace(/:\s*$/, ""));
+    }
+    return out;
+  });
+  const statRef = (stat: string): StatBreakdownRef => ({ stat, actor: "player" });
+  const pinnedStat = (stat: string) => pinnedKeys.has(calcBreakdownKey(statRef(stat)));
+  function bd(stat: string | null, title?: string) {
+    if (!stat || !bdLabels.has(stat)) return {};
+    const label = title ?? (bdLabels.get(stat) || stat);
+    const open = (e: Event, pin: boolean) => breakdowns?.show(e.currentTarget as HTMLElement, statRef(stat), label, pin);
+    return {
+      role: "button",
+      tabindex: 0,
+      "data-bd": "",
+      "aria-pressed": pinnedStat(stat),
+      onmouseenter: (e: MouseEvent) => open(e, false),
+      onmouseleave: () => breakdowns?.leave(),
+      onclick: (e: MouseEvent) => open(e, true),
+      onkeydown: (e: KeyboardEvent) => e.key === "Enter" && open(e, true),
+    };
+  }
+
   let tip = $state<{ tt: Tooltip; x: number; y: number } | null>(null);
   let tipTimer = 0;
   let tipRequest = 0;
@@ -165,6 +199,14 @@
     tip = null;
   }
 </script>
+
+{#snippet pin(stat: string | null)}
+  {#if stat && pinnedStat(stat)}<span class="pinmark" title={m.sidebar_breakdown_pinned()}><Icon name="push-pin" size={10} /></span>{/if}
+{/snippet}
+
+{#snippet kv(stat: string, label: string, value: string)}
+  <div class="kr" {...bd(stat, label)}><span>{label}</span><span class="v num">{value}{@render pin(stat)}</span></div>
+{/snippet}
 
 {#if info}
   <div class="page">
@@ -199,35 +241,36 @@
               <b>{info.ascendClassName ?? info.className}</b>{#if info.ascendClassName}<span class="dim">{` · ${info.className}`}</span>{/if}
             </span>
             <div class="dps">
-              <span class="big num">{fmt(headline.value)}</span>
+              <span class="big num" {...bd(headline.key, headline.label)}>{fmt(headline.value)}{@render pin(headline.key)}</span>
               <span class="dim">{headline.label}</span>
               {#if summary?.mainSkill}
                 <button class="skillchip" onclick={() => go("skills", { view: "skills", group: info.mainSocketGroup })}>{stripPobText(summary.mainSkill)}</button>
               {/if}
             </div>
             <span class="sub">
-              {#if n("Speed") > 0}<span class="num">{fmt(n("Speed"), 2)}</span>{m.ov_per_second()}{/if}
-              {#if n("CritChance") > 0}<span class="sep">·</span><span class="num">{fmt(n("CritChance"), 1)}%</span> {m.ov_crit()}{/if}
-              {#if n("CritMultiplier") > 0}<span class="sep">·</span><span class="num">{fmt(n("CritMultiplier") * 100)}%</span> {m.ov_crit_multi()}{/if}
-              {#if n("HitChance") > 0}<span class="sep">·</span><span class="num">{fmt(n("HitChance"))}%</span> {m.ov_hit()}{/if}
+              {#if n("Speed") > 0}<span {...bd("Speed")}><span class="num">{fmt(n("Speed"), 2)}</span>{m.ov_per_second()}{@render pin("Speed")}</span>{/if}
+              {#if n("CritChance") > 0}<span class="sep">·</span><span {...bd("CritChance")}><span class="num">{fmt(n("CritChance"), 1)}%</span> {m.ov_crit()}{@render pin("CritChance")}</span>{/if}
+              {#if n("CritMultiplier") > 0}<span class="sep">·</span><span {...bd("CritMultiplier")}><span class="num">{fmt(n("CritMultiplier") * 100)}%</span> {m.ov_crit_multi()}{@render pin("CritMultiplier")}</span>{/if}
+              {#if n("HitChance") > 0}<span class="sep">·</span><span {...bd("HitChance")}><span class="num">{fmt(n("HitChance"))}%</span> {m.ov_hit()}{@render pin("HitChance")}</span>{/if}
             </span>
           </div>
         </div>
         <div class="tiles">
-          <div class="tile" style:--accent="var(--c-life)"><span class="k">{m.ov_life()}</span><span class="v num">{fmt(n("Life"))}</span></div>
-          {#if n("EnergyShield") > 0}<div class="tile" style:--accent="var(--c-es)"><span class="k">{m.ov_es()}</span><span class="v num">{fmt(n("EnergyShield"))}</span></div>{/if}
-          <div class="tile" style:--accent="var(--fg-2)"><span class="k">{m.ov_ehp()}</span><span class="v num">{fmt(n("TotalEHP"))}</span></div>
-          <div class="tile" style:--accent="var(--c-mana)"><span class="k">{m.ov_mana()}</span><span class="v num">{fmt(n("Mana"))}</span></div>
+          <div class="tile" style:--accent="var(--fg-2)" {...bd("TotalEHP", m.ov_ehp())}><span class="k">{m.ov_ehp()}</span><span class="v num">{fmt(n("TotalEHP"))}</span>{@render pin("TotalEHP")}</div>
+          <div class="tile" style:--accent="var(--c-life)" {...bd("Life", m.ov_life())}><span class="k">{m.ov_life()}</span><span class="v num">{fmt(n("Life"))}</span>{@render pin("Life")}</div>
+          {#if n("EnergyShield") > 0}<div class="tile" style:--accent="var(--c-es)" {...bd("EnergyShield", m.ov_es())}><span class="k">{m.ov_es()}</span><span class="v num">{fmt(n("EnergyShield"))}</span>{@render pin("EnergyShield")}</div>{/if}
+          <div class="tile" style:--accent="var(--c-mana)" {...bd("Mana", m.ov_mana())}><span class="k">{m.ov_mana()}</span><span class="v num">{fmt(n("Mana"))}</span>{@render pin("Mana")}</div>
           {#if game.isPoe2 && summary}
-            <div class="tile" style:--accent="var(--c-spirit)">
+            <div class="tile" style:--accent="var(--c-spirit)" {...bd("Spirit", m.ov_spirit())}>
               <span class="k">{m.ov_spirit()}</span>
               <span class="v num">{fmt(summary.spirit)}{#if summary.spiritUnreserved < 0}<span class="neg">{` ${fmt(summary.spiritUnreserved)}`}</span>{/if}</span>
+              {@render pin("Spirit")}
             </div>
           {/if}
         </div>
-        <div class="res">
+        <div class="tiles res">
           {#each [["FireResist", m.ov_fire(), "var(--c-fire)"], ["ColdResist", m.ov_cold(), "var(--c-cold)"], ["LightningResist", m.ov_lightning(), "var(--c-lightning)"], ["ChaosResist", m.ov_chaos(), "var(--c-chaos)"]] as [k, label, color] (k)}
-            <span style:color>{label}<span class="v num" class:low={n(k) < 75}>{fmt(n(k))}%</span></span>
+            <div class="tile" style:--accent={color} {...bd(k)}><span class="k">{label}</span><span class="v num" class:low={n(k) < 75}>{fmt(n(k))}%</span>{@render pin(k)}</div>
           {/each}
         </div>
       </section>
@@ -289,20 +332,22 @@
         <div class="ph"><span class="t">{m.ov_defences()}</span><span class="s">{m.ov_defences_sum()}</span></div>
         <div class="hits">
           {#each hits as h (h.key)}
-            <div class="hit" class:weak={weakest?.key === h.key} style:color={h.color}>
-              <span class="k">{h.label}{#if weakest?.key === h.key}<span class="lowtag">{` · ${m.ov_lowest()}`}</span>{/if}</span>
+            <div class="hit" class:weak={weakest?.key === h.key} style:color={h.color} {...bd(h.key)}>
+              <span class="k">{h.label}</span>
               <span class="v num">{fmt(h.value)}</span>
+              {@render pin(h.key)}
             </div>
           {/each}
         </div>
         <div class="kv">
-          {#if n("Evasion") > 0}<span>{m.ov_evasion()}</span><span class="v num">{fmt(n("Evasion"))}{#if n("MeleeEvadeChance") > 0}{` · ${m.ov_evade_melee({ value: fmt(n("MeleeEvadeChance")) })}`}{/if}</span>{/if}
-          {#if n("Armour") > 0}<span>{m.ov_armour()}</span><span class="v num">{fmt(n("Armour"))}</span>{/if}
-          <span>{m.ov_block()}</span><span class="v num">{fmt(n("EffectiveBlockChance"))}% · {fmt(n("EffectiveSpellBlockChance"))}% {m.ov_spell()}</span>
-          {#if n("EffectiveSpellSuppressionChance") > 0}<span>{m.ov_suppression()}</span><span class="v num">{fmt(n("EffectiveSpellSuppressionChance"))}%</span>{/if}
-          <span>{m.ov_life_regen()}</span><span class="v num">{fmt(n("LifeRegenRecovery"), 1)}/s</span>
-          <span>{m.ov_mana_regen()}</span><span class="v num">{fmt(n("ManaRegenRecovery"), 1)}/s</span>
-          <span>{m.ov_movement()}</span><span class="v num">{n("EffectiveMovementSpeedMod") >= 1 ? "+" : ""}{fmt((n("EffectiveMovementSpeedMod") - 1) * 100, 1)}%</span>
+          {#if n("Evasion") > 0}{@render kv("Evasion", m.ov_evasion(), fmt(n("Evasion")))}{/if}
+          {#if n("Armour") > 0}{@render kv("Armour", m.ov_armour(), fmt(n("Armour")))}{/if}
+          {@render kv("EffectiveBlockChance", m.ov_block(), `${fmt(n("EffectiveBlockChance"))}%`)}
+          {@render kv("EffectiveSpellBlockChance", m.ov_spell_block(), `${fmt(n("EffectiveSpellBlockChance"))}%`)}
+          {#if n("EffectiveSpellSuppressionChance") > 0}{@render kv("EffectiveSpellSuppressionChance", m.ov_suppression(), `${fmt(n("EffectiveSpellSuppressionChance"))}%`)}{/if}
+          {@render kv("LifeRegenRecovery", m.ov_life_regen(), `${fmt(n("LifeRegenRecovery"), 1)}/s`)}
+          {@render kv("ManaRegenRecovery", m.ov_mana_regen(), `${fmt(n("ManaRegenRecovery"), 1)}/s`)}
+          {@render kv("EffectiveMovementSpeedMod", m.ov_movement(), `${n("EffectiveMovementSpeedMod") >= 1 ? "+" : ""}${fmt((n("EffectiveMovementSpeedMod") - 1) * 100, 1)}%`)}
         </div>
       </section>
 
@@ -314,11 +359,11 @@
         <div class="pass">
           {#if nodesBy.keystones.length}
             <span class="k">{m.ov_keystones()}</span>
-            <span class="links">{#each nodesBy.keystones as k, i (k.id)}{#if i}<span class="sep">·</span>{/if}<button class="key" onclick={() => go("tree", { view: "tree", node: k.id, name: k.name })}>{k.name}</button>{/each}</span>
+            <span class="links">{#each nodesBy.keystones as k, i (k.id)}{#if i}<span class="sep">·</span>{/if}<button class="key" onmouseenter={(e) => nodeTipFor(e, k.id)} onfocus={(e) => nodeTipFor(e, k.id)} onmouseleave={() => (nodeTip = null)} onblur={() => (nodeTip = null)} onclick={() => ((nodeTip = null), go("tree", { view: "tree", node: k.id, name: k.name }))}>{k.name}</button>{/each}</span>
           {/if}
           {#if nodesBy.asc.length}
             <span class="k">{m.ov_ascendancy()}</span>
-            <span class="links">{#each nodesBy.asc as k, i (k.id)}{#if i}<span class="sep">·</span>{/if}<button class="asc" onclick={() => go("tree", { view: "tree", node: k.id, name: k.name })}>{k.name}</button>{/each}</span>
+            <span class="links">{#each nodesBy.asc as k, i (k.id)}{#if i}<span class="sep">·</span>{/if}<button class="asc" onmouseenter={(e) => nodeTipFor(e, k.id)} onfocus={(e) => nodeTipFor(e, k.id)} onmouseleave={() => (nodeTip = null)} onblur={() => (nodeTip = null)} onclick={() => ((nodeTip = null), go("tree", { view: "tree", node: k.id, name: k.name }))}>{k.name}</button>{/each}</span>
           {/if}
           <span class="k">{m.ov_notables()}</span><span>{m.ov_notables_count({ count: nodesBy.notables })}</span>
           {#if game.isPoe2 && (info.points.weaponSet1Used || info.points.weaponSet2Used)}
@@ -353,6 +398,7 @@
   {#if tip}
     <PobTooltip lines={tip.tt.lines} header={tip.tt.header} runic={tip.tt.runic} uniqueGem={tip.tt.uniqueGem} itemArt={tip.tt.itemArt} x={tip.x} y={tip.y} />
   {/if}
+  <CalcBreakdownWindows bind:this={breakdowns} revision={build.rev} onpinnedchange={(keys) => (pinnedKeys = keys)} />
 {/if}
 
 <style>
@@ -523,13 +569,17 @@
     padding: 9px 12px 10px;
     border-right: 1px solid var(--line-0);
     box-shadow: inset 0 -2px 0 color-mix(in oklab, var(--accent) 70%, transparent);
+    transition: box-shadow 160ms ease;
+  }
+  .tile:hover {
+    box-shadow: inset 0 -4px 0 var(--accent);
   }
   .tile:last-child {
     border-right: 0;
   }
   .tile .k {
     font-size: var(--fs-xs);
-    color: var(--fg-2);
+    color: var(--accent);
   }
   .tile .v {
     font-size: 17px;
@@ -539,18 +589,15 @@
     font-size: var(--fs-sm);
   }
   .res {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-    padding: 8px 12px;
-    border-top: 1px solid var(--line-0);
-    font-size: var(--fs-sm);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .res .v {
-    margin-left: 5px;
-    color: var(--fg-0);
+  .res .tile {
+    padding: 6px 12px 7px;
   }
-  .res .v.low {
+  .res .tile .v {
+    font-size: var(--fs-md, 14px);
+  }
+  .res .tile .v.low {
     color: var(--warn);
   }
 
@@ -685,8 +732,7 @@
     color: var(--fg-0);
     font-size: var(--fs-md, 14px);
   }
-  .hit.weak .v,
-  .lowtag {
+  .hit.weak .v {
     color: var(--warn);
   }
   .kv {
@@ -697,9 +743,45 @@
     border-top: 1px solid var(--line-0);
     font-size: var(--fs-sm);
   }
+  .kr {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
   .kv .v {
+    position: relative;
     color: var(--fg-0);
     text-align: right;
+  }
+  [data-bd] {
+    position: relative;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  [data-bd]:hover {
+    background: var(--bg-hover);
+  }
+  .tile[data-bd],
+  .hit[data-bd] {
+    border-radius: 0;
+  }
+  .pinmark {
+    position: absolute;
+    top: -6px;
+    right: -9px;
+    display: grid;
+    place-items: center;
+    color: var(--focus);
+  }
+  .tile .pinmark,
+  .hit .pinmark {
+    top: 5px;
+    right: 5px;
+  }
+  .kv .pinmark {
+    top: 50%;
+    right: -11px;
+    transform: translateY(-50%);
   }
 
   .pass {

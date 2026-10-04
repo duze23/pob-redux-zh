@@ -50,7 +50,7 @@
   }
 
   // breakdown popup for hovered/pinned stat rows
-  let bd = $state<{ sections: BreakdownSection[]; row: number; y: number; pinned: boolean; ready: boolean } | null>(null);
+  let bd = $state<{ sections: BreakdownSection[]; row: number; title: string; y: number; pinned: boolean; ready: boolean } | null>(null);
   let bdPop = $state<HTMLElement>();
   let bdTimer = 0;
   const bdCache = new Map<string, BreakdownSection[]>();
@@ -63,7 +63,7 @@
     bd = { ...bd, y, ready: true };
   }
 
-  function rowBreakdown(clientY: number, rowIndex: number, pin: boolean) {
+  function rowBreakdown(clientY: number, rowIndex: number, title: string, pin: boolean) {
     clearTimeout(bdTimer);
     if (pin && bd?.pinned && bd.row === rowIndex) {
       bd = null;
@@ -72,7 +72,7 @@
     const y = Math.max(40, clientY - 40);
     const key = `${rowIndex}:${build.rev}`;
     const apply = (sections: BreakdownSection[]) => {
-      bd = { sections, row: rowIndex, y, pinned: pin || (bd?.pinned && bd.row === rowIndex) || false, ready: false };
+      bd = { sections, row: rowIndex, title, y, pinned: pin || (bd?.pinned && bd.row === rowIndex) || false, ready: false };
       void placeBreakdown(rowIndex, clientY);
     };
     const cached = bdCache.get(key);
@@ -90,6 +90,8 @@
       }
     }, pin ? 0 : 140);
   }
+
+  const rowTitle = (lhs: string | null) => lhs?.replace(/:\s*$/, "") || m.sidebar_breakdown();
 
   function rowLeave() {
     clearTimeout(bdTimer);
@@ -353,10 +355,10 @@
                       aria-pressed={pinned}
                       role="button"
                       tabindex={r.hasBreakdown ? 0 : -1}
-                      onmouseenter={(e) => r.hasBreakdown && rowBreakdown(e.clientY, rowIndex + 1, false)}
+                      onmouseenter={(e) => r.hasBreakdown && rowBreakdown(e.clientY, rowIndex + 1, rowTitle(r.lhs), false)}
                       onmouseleave={rowLeave}
-                      onclick={(e) => r.hasBreakdown && rowBreakdown(e.clientY, rowIndex + 1, true)}
-                      onkeydown={(e) => e.key === "Enter" && r.hasBreakdown && rowBreakdown(200, rowIndex + 1, true)}
+                      onclick={(e) => r.hasBreakdown && rowBreakdown(e.clientY, rowIndex + 1, rowTitle(r.lhs), true)}
+                      onkeydown={(e) => e.key === "Enter" && r.hasBreakdown && rowBreakdown(200, rowIndex + 1, rowTitle(r.lhs), true)}
                     >
                       <span class="k"><PobText text={r.lhs?.replace(/:\s*$/, "")} defaultColor="var(--fg-1)" /></span>
                       <span class="svalue">
@@ -419,7 +421,7 @@
   {#if bd}
     <div bind:this={bdPop} class="bdpop" class:ready={bd.ready} style:top={`${bd.y}px`}>
       <div class="bdhead">
-        <span class="label">{m.sidebar_breakdown()}</span>
+        <span class="label"><PobText text={bd.title} /></span>
         {#if bd.pinned}<span class="bdpin" title={m.sidebar_breakdown_pinned()}><Icon name="push-pin" size={12} /></span>{/if}
       </div>
       <div class="bdscroll">

@@ -8,13 +8,16 @@ export type CalcBreakdownRef = {
   col: number;
   actor: "player" | "minion";
 };
+export type StatBreakdownRef = { stat: string; actor: "player" | "minion" };
+export type BreakdownRef = CalcBreakdownRef | StatBreakdownRef;
 
 export type BreakdownPosition = { x: number; y: number };
 export type BreakdownViewport = { width: number; height: number };
 export type BreakdownAnchor = { left: number; right: number; top: number; bottom: number };
 export type BreakdownBlocker = BreakdownPosition & { key: string; width: number; height: number; ready: boolean };
 
-export function calcBreakdownKey(ref: CalcBreakdownRef) {
+export function calcBreakdownKey(ref: BreakdownRef) {
+  if ("stat" in ref) return `stat:${ref.actor}:${ref.stat}`;
   return `${ref.actor}:${ref.section}:${ref.sub}:${ref.row}:${ref.col}`;
 }
 

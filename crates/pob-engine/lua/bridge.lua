@@ -1069,11 +1069,8 @@ end
 
 -- Breakdown popup for one sidebar row, via Build's own breakdown control
 -- (GetSidebarBreakdown → CalcBreakdownControl against mainEnv).
-M.sidebar_breakdown = function(p)
-	ensureBuild()
-	local line = build.controls.statBox.list[tonumber(p and p.rowIndex) or -1]
-	if not line then error("unknown sidebar row " .. tostring(p and p.rowIndex), 0) end
-	if not line.breakdown and not line.modNames then
+local function lineBreakdown(line)
+	if not line or (not line.breakdown and not line.modNames) then
 		return { sections = array({}), rev = build.outputRevision }
 	end
 	local displayData = build:GetSidebarBreakdown(line.breakdown, line.modNames, line.ignoredSections, line.actorName)
@@ -1082,6 +1079,26 @@ M.sidebar_breakdown = function(p)
 	local sections = breakdownSections(ctl)
 	ctl:SetBreakdownData()
 	return { sections = sections, rev = build.outputRevision }
+end
+
+M.sidebar_breakdown = function(p)
+	ensureBuild()
+	local line = build.controls.statBox.list[tonumber(p and p.rowIndex) or -1]
+	if not line then error("unknown sidebar row " .. tostring(p and p.rowIndex), 0) end
+	return lineBreakdown(line)
+end
+
+-- Same popup keyed by stat: the first sidebar row for `stat` on `actor` (default player).
+M.stat_breakdown = function(p)
+	ensureBuild()
+	p = p or {}
+	local minion = p.actor == "minion"
+	for _, line in ipairs(build.controls.statBox.list) do
+		if line.stat == p.stat and (line.actor == "minion") == minion and (line.breakdown or line.modNames) then
+			return lineBreakdown(line)
+		end
+	end
+	return lineBreakdown(nil)
 end
 
 -- PoE2's CalcSectionControl exposes its cell formatter as FormatStr; PoE1

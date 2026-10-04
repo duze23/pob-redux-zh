@@ -6,7 +6,7 @@
     calcBreakdownWidth,
     chooseBreakdownPosition,
     clampBreakdownPosition,
-    type CalcBreakdownRef,
+    type BreakdownRef,
   } from "$lib/calc-breakdown";
   import { m } from "$lib/paraglide/messages";
   import BreakdownPanel from "./BreakdownPanel.svelte";
@@ -17,7 +17,7 @@
     sections: BreakdownSection[];
     title: string;
     key: string;
-    ref: CalcBreakdownRef;
+    ref: BreakdownRef;
     x: number;
     y: number;
     width: number;
@@ -152,11 +152,13 @@
     void measurePinned(key, node);
   }
 
+  const fetchBreakdown = (ref: BreakdownRef) => "stat" in ref ? engine.statBreakdown(ref.stat, ref.actor) : engine.calcCellBreakdown(ref);
+
   async function fetchPinned(popup: PinnedBreakdown, node?: HTMLElement) {
     const request = ++pinRequest;
     requests.set(popup.key, request);
     try {
-      const result = await engine.calcCellBreakdown(popup.ref);
+      const result = await fetchBreakdown(popup.ref);
       if (requests.get(popup.key) !== request || !isPinned(popup.key)) return;
       cache.set(cacheKey(popup.key), result.sections);
       applyPinnedSections(popup.key, popup.title, result.sections, node);
@@ -262,7 +264,7 @@
     startDrag(event, key);
   }
 
-  export function show(node: HTMLElement, ref: CalcBreakdownRef, title: string, pin: boolean) {
+  export function show(node: HTMLElement, ref: BreakdownRef, title: string, pin: boolean) {
     clearTimeout(hoverTimer);
     const key = calcBreakdownKey(ref);
     const cached = cache.get(cacheKey(key));
@@ -313,7 +315,7 @@
     hover = null;
     hoverTimer = window.setTimeout(async () => {
       try {
-        const result = await engine.calcCellBreakdown(ref);
+        const result = await fetchBreakdown(ref);
         if (request !== hoverRequest) return;
         cache.set(cacheKey(key), result.sections);
         apply(result.sections);
