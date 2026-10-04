@@ -1478,6 +1478,9 @@ local function requireNode(p)
 	return node
 end
 
+-- A table, not locals: the main chunk is at LuaJIT's 200-local limit.
+local nodeUtil = {}
+
 local function nodeSummary(id, node)
 	return {
 		id = id,
@@ -1486,7 +1489,7 @@ local function nodeSummary(id, node)
 		stats = strArray(node.sd),
 		allocated = node.alloc == true,
 		ascendancyName = opt(node.ascendancyName),
-		pathCost = node.path and #node.path or null,
+		pathCost = node.path and #(nodeUtil.mainPath(node)) or null,
 		reminder = node.reminderText and strArray(node.reminderText) or null,
 	}
 end
@@ -1763,7 +1766,7 @@ local function withAllocMode(mode, fn, ...)
 	return res
 end
 
-local function touchesWeaponSet(node)
+function nodeUtil.touchesWeaponSet(node)
 	for i = 2, #(node.path or {}) do
 		local other = node.path[i]
 		if other.alloc and (other.allocMode or 0) > 0 then return true end
@@ -1774,13 +1777,28 @@ local function touchesWeaponSet(node)
 	return false
 end
 
+--- The main tree route PoB really allocates; `node.path` leaves out weapon set passives it would move.
+function nodeUtil.mainPath(node)
+	local path = node.path or {}
+	if IS_POE2 and node.path and not node.alloc then
+		local spec = build.spec
+		local ok, eff = pcall(withAllocMode, 0, spec.GetEffectiveAllocationPath, spec, node)
+		if ok and eff then path = eff end
+	end
+	local moved = 0
+	for _, n in ipairs(path) do
+		if n.alloc and (n.allocMode or 0) > 0 then moved = moved + 1 end
+	end
+	return path, moved
+end
+
 -- PassiveTreeView's rule for keystones and jewel sockets: the reason a click is refused, or nil.
 local function weaponSetBlock(node, mode)
 	if not IS_POE2 or not (node.type == "Keystone" or node.type == "Socket" or node.containJewelSocket) then return nil end
 	local kind = node.type == "Keystone" and "keystones" or "jewel sockets"
 	if not node.alloc and node.path then
 		if mode > 0 then return "Cannot allocate " .. kind .. " while weapon set " .. mode .. " is selected" end
-		if touchesWeaponSet(node) then return "Cannot allocate " .. kind .. " connected to weapon set passives" end
+		if nodeUtil.touchesWeaponSet(node) then return "Cannot allocate " .. kind .. " connected to weapon set passives" end
 	elseif node.alloc and (node.allocMode or 0) == 0 and mode > 0 then
 		return "Cannot remove main tree " .. kind .. " while weapon set " .. mode .. " is selected"
 	end
@@ -2357,6 +2375,10 @@ local function scoreNodes(p)
 			local dist = num(p.dists and p.dists[i]) or node.pathDist or 1000
 			local r = { id = id, dist = dist }
 			if not node.alloc then
+				if p.moves then
+					local _, moved = nodeUtil.mainPath(node)
+					if moved > 0 then r.moved = moved end
+				end
 				if not cache[node.modKey] then
 					cache[node.modKey] = calcFunc({ addNodes = { [node] = true } }, useFullDPS)
 				end
@@ -2486,9 +2508,10 @@ end
 M.node_path = function(p)
 	ensureBuild()
 	local node = requireNode(p)
+	local path, moved = nodeUtil.mainPath(node)
 	local ids = array({})
-	for i, n in ipairs(node.path or {}) do ids[i] = n.id end
-	return { id = node.id, path = ids, cost = #ids, allocated = node.alloc == true }
+	for i, n in ipairs(path) do ids[i] = n.id end
+	return { id = node.id, path = ids, cost = #ids, weaponSetPassivesMoved = moved, allocated = node.alloc == true }
 end
 
 -- Objectives for path_plan. Matched against a node's stat lines, so a route can
@@ -2715,6 +2738,14 @@ M.alloc_node = function(p)
 				if o.takenBy == null then options[#options + 1] = string.format("%d (%s)", o.effect, table.concat(o.stats, " / ")) end
 			end
 			error(string.format("mastery %d needs an effect: pass effect as one of %s", node.id, table.concat(options, "; ")), 0)
+		end
+	end
+	if not node.alloc and not p.promote then
+		local path, moved = nodeUtil.mainPath(node)
+		if moved > 0 then
+			error(string.format(
+				"%s is reached through %d weapon set passive%s. Allocating it in the main tree moves them into the main tree, so it costs %d main tree points, not %d. Pass promote to do that anyway.",
+				node.dn or node.name or tostring(node.id), moved, moved == 1 and "" or "s", #path, #path - moved), 0)
 		end
 	end
 	build.spec:AllocNode(node)

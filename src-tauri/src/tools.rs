@@ -361,7 +361,7 @@ fn defs_poe2() -> Vec<ToolDef> {
         ),
         ro(
             "tree_suggest",
-            "Score every main-tree node for one stat by running PoB's calculation with it allocated (or, for allocated nodes, as it stands), and return the best unallocated nodes by gain per point along their path (`bestToAdd`) plus the allocated nodes the build would miss least (`weakestAllocated`: `lossIfRemoved` and how many allocated nodes depend on each; a path node with dependents cannot go alone). `stat` is a PoB output key: Life, TotalEHP, Armour, Evasion, EnergyShield, CombinedDPS, TotalDPS, FullDPS, AverageDamage, Speed, CritChance, BlockChance, EffectiveMovementSpeedMod, Str, Dex, Int, LifeRegen, LifeLeechRate, Mana, and the *TakenHit keys; list_power_stats has them all. Takes a few seconds. Path costs are from the current tree; use path_plan or alloc_node to take one.",
+            "Score every main-tree node for one stat by running PoB's calculation with it allocated (or, for allocated nodes, as it stands), and return the best unallocated nodes by gain per point along their path (`bestToAdd`) plus the allocated nodes the build would miss least (`weakestAllocated`: `lossIfRemoved` and how many allocated nodes depend on each; a path node with dependents cannot go alone). `stat` is a PoB output key: Life, TotalEHP, Armour, Evasion, EnergyShield, CombinedDPS, TotalDPS, FullDPS, AverageDamage, Speed, CritChance, BlockChance, EffectiveMovementSpeedMod, Str, Dex, Int, LifeRegen, LifeLeechRate, Mana, and the *TakenHit keys; list_power_stats has them all. Takes a few seconds. Path costs are from the current tree; use path_plan or alloc_node to take one. A node whose route runs through weapon set passives is listed in `throughWeaponSetPassives` instead: `pointsToReach` there is the main tree points it really costs, `weaponSetPassivesMoved` how many of those passives would move into the main tree, and its gain was scored without that move.",
             obj(
                 json!({
                     "stat": prop("string", "Output key to score (default CombinedDPS)"),
@@ -374,7 +374,7 @@ fn defs_poe2() -> Vec<ToolDef> {
         ).slow(),
         ro("list_power_stats", "Every stat tree_suggest can score.", none()),
         ro("node_info", "Name, type, stats, mods, allocation state, and path cost of one node.", obj(json!({ "node_id": node_id() }), &["node_id"])),
-        ro("node_path_cost", "How many points allocating a node would cost from the current tree, and the path PoB would take. Does not allocate.", obj(json!({ "node_id": node_id() }), &["node_id"])),
+        ro("node_path_cost", "How many main tree points allocating a node would cost from the current tree, and the path PoB would take. `weaponSetPassivesMoved` counts weapon set passives on that path that would move into the main tree; they are in the path and the cost. Does not allocate.", obj(json!({ "node_id": node_id() }), &["node_id"])),
         ro(
             "path_plan",
             "Plan a route from the allocated tree to a node, preferring intermediate nodes that serve an objective. \
@@ -412,7 +412,11 @@ setting for the whole tree. It applies to nodes allocated from then on, so set i
                 &["attribute"],
             ),
         ).idempotent(),
-        rw("alloc_node", "Allocate a node and the shortest path to it, exactly as clicking it in the tree would, then recalculate.", obj(json!({ "node_id": node_id() }), &["node_id"])),
+        rw(
+            "alloc_node",
+            "Allocate a node and the shortest path to it, exactly as clicking it in the tree would, then recalculate. If that path runs through weapon set passives, allocating in the main tree moves them into the main tree too, which costs more main tree points than the path shows; the call then fails and gives the real cost unless `promote` is true.",
+            obj(json!({ "node_id": node_id(), "promote": prop("boolean", "Allocate even when that moves weapon set passives into the main tree") }), &["node_id"]),
+        ),
         rw("dealloc_node", "Deallocate a node and every node that depended on it for connectivity, then recalculate.", obj(json!({ "node_id": node_id() }), &["node_id"])),
         rw("tree_undo", "Undo the last tree change.", none()),
         ro("export_tree_url", "The pathofexile.com passive tree URL for the active tree.", none()),
@@ -665,6 +669,8 @@ const POE1_TEXT: &[(&str, &str)] = &[
     ("build_summary", "One compact snapshot of the open build: level, class, ascendancy, main skill and its support count, every skill as `skills` (group index, skill, `press` = active/persistent/trigger/granted, support count, enabled, main, `grantedBy` for an item's skill and `duplicateOf` pointing at a socketed copy); a link can hold several skills and each is listed. `persistent` means it reserves mana or life (auras, heralds, golems, spectres, stances); `trigger` means a trigger support, a skill or an item fires it. Also: how many skills need a keypress (`activeSkills`), passive points used against the budget available at that level, ascendancy points, life, energy shield, mana, mana and life reservation (`manaReserved`, `manaReservedPercent`, `manaUnreserved` and the life equivalents), flasks equipped and active, bandit and pantheon gods, resistances, attributes, `requirements` (per attribute: need, have, met, and the item or gem that sets it; the highest single source, never a sum), movement speed, DPS, `keystones` (allocated or granted by items) and `keystoneRules`: plain rules for keystones that change which lines matter. Follow keystoneRules before recommending a line. Only `active` skills cost a keypress. Prefer this over several get_stats calls when starting to advise on a build."),
     ("get_tree_state", "Allocated passive nodes of the active tree: node ids, class ids, and node overrides, plus the point accounting — points used, ascendancy points, jewel sockets, and the budget available at the character's level. The budget is a range because quest points depend on campaign progress rather than level. Use node_info for details on any id."),
     ("path_plan", "Plan a route from the allocated tree to a node, preferring intermediate nodes that serve an objective. `objective` is \"short\" (fewest points, the default), \"defence\", \"damage\", \"speed\", \"attributes\", or any stat substring such as \"mana\". `max_extra` permits that many points beyond the shortest route when they buy more of the objective — 3 to 5 is usually where a route starts picking up real nodes. Changes nothing; pass the returned node ids to alloc_path."),
+    ("node_path_cost", "How many points allocating a node would cost from the current tree, and the path PoB would take. Does not allocate."),
+    ("tree_suggest", "Score every main-tree node for one stat by running PoB's calculation with it allocated (or, for allocated nodes, as it stands), and return the best unallocated nodes by gain per point along their path (`bestToAdd`) plus the allocated nodes the build would miss least (`weakestAllocated`: `lossIfRemoved` and how many allocated nodes depend on each; a path node with dependents cannot go alone). `stat` is a PoB output key: Life, TotalEHP, Armour, Evasion, EnergyShield, CombinedDPS, TotalDPS, FullDPS, AverageDamage, Speed, CritChance, BlockChance, EffectiveMovementSpeedMod, Str, Dex, Int, LifeRegen, LifeLeechRate, Mana, and the *TakenHit keys; list_power_stats has them all. Takes a few seconds. Path costs are from the current tree; use path_plan or alloc_node to take one."),
     ("node_info", "Name, type, stats, mods, allocation state, and path cost of one node. For a mastery, `masteryEffects` lists each effect with the `effect` id alloc_node takes, and `takenBy` when another mastery already holds it."),
     ("alloc_node", "Allocate a node and the shortest path to it, exactly as clicking it in the tree would, then recalculate. A mastery needs `effect`, an id from node_info's masteryEffects; on an allocated mastery it changes the effect."),
     ("set_gem_levels", "Lower every gem, supports included, that the character's level cannot use to the highest level it can, from each gem level's own level requirement. Gems the level allows stay as they are, corrupted level 21 gems included. Call this after set_level on a levelling build."),
@@ -728,7 +734,12 @@ fn adapt_for_poe1(defs: &mut Vec<ToolDef>) {
             });
         }
         match d.name {
-            "alloc_node" => props["effect"] = prop("integer", "Mastery effect id from node_info's masteryEffects"),
+            "alloc_node" => {
+                props["effect"] = prop("integer", "Mastery effect id from node_info's masteryEffects");
+                if let Some(p) = props.as_object_mut() {
+                    p.remove("promote");
+                }
+            }
             "select_class" => props["secondary_ascend_class_id"] = prop("integer", "Bloodline id from list_classes' secondaryAscendancies (0 for none)"),
             "craft_rare" => {
                 if let Some(p) = props.as_object_mut() {
@@ -1089,17 +1100,29 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
             // PoB scores an allocated node as (stat without it - stat now), so the
             // least negative number is the node the build would miss least.
             weakest.sort_by(|a, b| f(b, "power").partial_cmp(&f(a, "power")).unwrap_or(std::cmp::Ordering::Equal));
-            let best_rows: Vec<Value> = add
-                .iter()
-                .take(limit)
-                .map(|r| {
-                    let mut v = ident(r);
-                    v["gainIfAllocated"] = json!(f(r, "power"));
-                    v["gainPerPointOnPath"] = json!(f(r, "pathPower"));
-                    v["pointsToReach"] = r.get("pathDist").cloned().unwrap_or(Value::Null);
-                    v
-                })
-                .collect();
+            let mut best_rows: Vec<Value> = Vec::new();
+            let mut via_weapon_set: Vec<Value> = Vec::new();
+            for r in &add {
+                if best_rows.len() >= limit {
+                    break;
+                }
+                let mut v = ident(r);
+                v["gainIfAllocated"] = json!(f(r, "power"));
+                v["gainPerPointOnPath"] = json!(f(r, "pathPower"));
+                v["pointsToReach"] = r.get("pathDist").cloned().unwrap_or(Value::Null);
+                // PoB's pathDist leaves out weapon set passives a main tree allocation would move.
+                let path = r.get("id").and_then(Value::as_i64).and_then(|id| ctx.call("node_path", json!({ "id": id })).ok());
+                let moved = path.as_ref().and_then(|p| p["weaponSetPassivesMoved"].as_i64()).unwrap_or(0);
+                if moved > 0 {
+                    v["pointsToReach"] = path.map(|p| p["cost"].clone()).unwrap_or(Value::Null);
+                    v["weaponSetPassivesMoved"] = json!(moved);
+                    if via_weapon_set.len() < 5 {
+                        via_weapon_set.push(v);
+                    }
+                    continue;
+                }
+                best_rows.push(v);
+            }
             let weak_rows: Vec<Value> = weakest
                 .iter()
                 .take(limit)
@@ -1114,6 +1137,7 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
                 "stat": scored.get("stat").cloned().unwrap_or(json!(stat)),
                 "label": scored.get("label").cloned().unwrap_or(Value::Null),
                 "bestToAdd": best_rows,
+                "throughWeaponSetPassives": via_weapon_set,
                 "weakestAllocated": weak_rows,
                 "scanned": report.len(),
                 "ms": scored.get("ms").cloned().unwrap_or(Value::Null),
@@ -1148,6 +1172,9 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
             let mut params = json!({ "id": req_i64(args, "node_id")? });
             if let Some(effect) = arg_i64(args, "effect")? {
                 params["effect"] = json!(effect);
+            }
+            if arg_bool(args, "promote") == Some(true) {
+                params["promote"] = json!(true);
             }
             let state = ctx.call("alloc_node", params)?;
             stats(tree_summary(state))

@@ -417,13 +417,14 @@ pub fn plan_points(engine: &EngineHandle, pool: &EnginePool, stat: &str, budget:
         while remaining > 0 && !candidates.is_empty() {
             let chunks: Vec<Value> = chunk_ranges(candidates.len(), 6)
                 .into_iter()
-                .map(|(a, b)| serde_json::json!({ "ids": &candidates[a..b], "stat": stat }))
+                .map(|(a, b)| serde_json::json!({ "ids": &candidates[a..b], "stat": stat, "moves": true }))
                 .collect();
             let mut best: Option<(i64, f64, i64)> = None;
             for r in pool.scatter("score_nodes", chunks)? {
                 for n in r.get("nodes").and_then(Value::as_array).into_iter().flatten() {
                     let (Some(id), Some(gain), Some(dist)) = (node_id(n.get("id")), n.get("p").and_then(Value::as_f64), node_id(n.get("dist"))) else { continue };
-                    if n.get("rank").and_then(Value::as_bool) != Some(true) || gain <= 0.0 || dist < 1 || dist > remaining {
+                    // A route through weapon set passives costs more main tree points than `dist` says.
+                    if n.get("rank").and_then(Value::as_bool) != Some(true) || n.get("moved").is_some() || gain <= 0.0 || dist < 1 || dist > remaining {
                         continue;
                     }
                     let better = match &best {
