@@ -7719,30 +7719,50 @@ local function configLabel(var)
 	return configLabels[var] or var
 end
 
-local function fmtStat(value, fmt)
+--- Build:FormatStat's rule: `pc` and `mod` stats are fractions shown as percent, a `mod` as its change from 1.
+local function fmtStat(value, entry, delta)
 	if type(value) ~= "number" then return value == nil and null or tostring(value) end
-	if not fmt or fmt == "" then return tostring(value) end
-	local ok, s = pcall(string.format, "%" .. fmt, value)
-	return ok and s or tostring(value)
+	local v = value * ((entry.pc or entry.mod) and 100 or 1) - ((entry.mod and not delta) and 100 or 0)
+	local ok, s = pcall(string.format, "%" .. (entry.fmt or "g"), v)
+	s = formatNumSep(ok and s or tostring(v))
+	return (delta and v > 0) and ("+" .. s) or s
 end
 
-local function statValue(output, entry)
-	if not output then return nil end
+--- nil where Build:AddDisplayStatList would leave the row out for that build's main skill.
+local function statValue(output, entry, skill)
+	if not output or entry.hideStat then return nil end
+	if skill and (entry.flag or entry.notFlag) then
+		local flags = (IS_POE2 and skill.activeEffect and skill.activeEffect.statSet and skill.activeEffect.statSet.skillFlags) or skill.skillFlags or {}
+		local need = type(entry.flag) == "string" and { entry.flag } or entry.flag or {}
+		local refuse = type(entry.notFlag) == "string" and { entry.notFlag } or entry.notFlag or {}
+		for _, f in ipairs(need) do
+			if not flags[f] then return nil end
+		end
+		for _, f in ipairs(refuse) do
+			if flags[f] then return nil end
+		end
+	end
 	local v = output[entry.stat]
 	if entry.childStat then
 		if type(v) ~= "table" then return nil end
 		v = v[entry.childStat]
 	end
 	if type(v) ~= "number" then return nil end
+	if entry.condFunc then
+		local ok, show = pcall(entry.condFunc, v, output)
+		if not (ok and show) then return nil end
+	elseif v == 0 then
+		return nil
+	end
 	return v
 end
 
 --- Both sides of PoB's sidebar stat list, as rows the UI can diff.
-local function compareStatRows(mine, theirs, onlyDiff)
+local function compareStatRows(mine, theirs, onlyDiff, mineSkill, theirSkill)
 	local rows = array({})
 	for _, entry in ipairs(build.displayStats or {}) do
 		if entry.stat then
-			local a, b = statValue(mine, entry), statValue(theirs, entry)
+			local a, b = statValue(mine, entry, mineSkill), statValue(theirs, entry, theirSkill)
 			if a ~= nil or b ~= nil then
 				local same = a == b
 				if not (onlyDiff and same) then
@@ -7756,10 +7776,10 @@ local function compareStatRows(mine, theirs, onlyDiff)
 						label = entry.label or entry.stat,
 						mine = a == nil and null or a,
 						theirs = b == nil and null or b,
-						mineText = a == nil and null or fmtStat(a, entry.fmt),
-						theirsText = b == nil and null or fmtStat(b, entry.fmt),
+						mineText = a == nil and null or fmtStat(a, entry),
+						theirsText = b == nil and null or fmtStat(b, entry),
 						delta = delta == nil and null or delta,
-						deltaText = delta == nil and null or fmtStat(delta, entry.fmt),
+						deltaText = delta == nil and null or fmtStat(delta, entry, true),
 						percent = (delta and a and a ~= 0) and (delta / math.abs(a) * 100) or null,
 						better = better,
 						same = same,
@@ -7848,7 +7868,8 @@ M.compare_summary = function(p)
 	ensureBuild()
 	local entry = compareEntry()
 	return {
-		rows = compareStatRows(build.calcsTab.mainOutput, entry:GetOutput(), p and p.onlyDifferences and true or false),
+		rows = compareStatRows(build.calcsTab.mainOutput, entry:GetOutput(), p and p.onlyDifferences and true or false,
+			build.calcsTab.mainEnv and build.calcsTab.mainEnv.player.mainSkill, entry.calcsTab.mainEnv and entry.calcsTab.mainEnv.player.mainSkill),
 		mine = { label = build.buildName or "This build", level = build.characterLevel },
 		theirs = compareMeta(compares[compareActive]),
 	}
