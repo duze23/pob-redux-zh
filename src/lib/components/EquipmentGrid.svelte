@@ -5,12 +5,12 @@
   import { socketArtUrls } from "$lib/item-art";
   import ItemIcon from "./ItemIcon.svelte";
 
-  let { slots, items, game, groups = [], selectedItem, onselect, onactive, onitemhover, ongemhover, onleave, legend = true, marked }:
+  let { slots, items, game, groups = [], selectedItem, onselect, onactive, onitemhover, ongemhover, onleave, legend = true }:
     { slots: SlotInfo[]; items: ItemInfo[]; game: "poe1" | "poe2"; groups?: SocketGroup[]; selectedItem: number | null;
       onselect: (id: number) => void; onactive?: (slot: string, active: boolean) => void;
       onitemhover: (event: MouseEvent | FocusEvent, itemId: number) => void;
       ongemhover: (event: MouseEvent | FocusEvent, group: number, gem: number) => void; onleave: () => void;
-      legend?: boolean; marked?: Set<string> } = $props();
+      legend?: boolean } = $props();
   let keyboardSlot = $state<string | null>(null);
   const visible = $derived(visibleEquipment(slots));
   const body = $derived(visible.filter((slot) => equipmentArea(slot.slot)));
@@ -44,7 +44,7 @@
   {@const item = byId.get(slot.itemId)}
   {@const sockets = item?.sockets ?? []}
   {@const gems = game === "poe1" ? socketedGems(slot.slot, sockets, groups) : []}
-  <div class="cell" class:marked={!!item && marked?.has(slot.slot)} class:occupied={!!item} class:off={!!item && slot.active === false} class:selected={!!item && selectedItem === item.id} class:keyboard={keyboardSlot === slot.slot}
+  <div class="cell" class:occupied={!!item} class:off={!!item && slot.active === false} class:selected={!!item && selectedItem === item.id} class:keyboard={keyboardSlot === slot.slot}
     onfocusin={(event) => { if ((event.target as HTMLElement).matches(":focus-visible")) keyboardSlot = slot.slot; }}
     onfocusout={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) keyboardSlot = null; }}
     style:grid-area={equipmentArea(slot.slot)} style:--rarity={rarity[item?.rarity ?? ""] ?? "var(--line-1)"}>
@@ -136,7 +136,6 @@
   .paperdoll { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr)); gap: 5px; aspect-ratio: 8 / 6; max-width: 400px; margin: 0 auto; }
   .cell { position: relative; min-width: 0; min-height: 0; border: 1px solid var(--line-1); border-radius: 3px; background: var(--bg-0); }
   .cell.occupied { border-color: color-mix(in srgb, var(--rarity) 40%, var(--line-0)); background: color-mix(in srgb, var(--rarity) 7%, var(--bg-0)); }
-  .cell.marked { box-shadow: inset 2px 0 0 var(--bad); }
   .cell.occupied:hover, .cell:focus-within, .cell.selected { border-color: var(--rarity); box-shadow: 0 0 0 1px var(--rarity); }
   .gear { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; padding: 3px; background: none; border: 0; color: var(--fg-2); cursor: pointer; }
   .gear:disabled { cursor: default; }

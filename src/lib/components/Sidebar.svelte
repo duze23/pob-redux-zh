@@ -389,12 +389,12 @@
         {/if}
         {#if side.notCounted?.count}
           {@const nc = side.notCounted}
-          {@const open = !collapsed.has("notcounted")}
+          <!-- Starts collapsed: the stored key marks it opened rather than closed. -->
+          {@const open = collapsed.has("notcounted-open")}
           <section class="scard">
-            <button class="cardhead" aria-expanded={open} title={m.sidebar_not_counted_title()} onclick={() => toggleGroup("notcounted")}>
+            <button class="cardhead" aria-expanded={open} title={m.sidebar_not_counted_title()} onclick={() => toggleGroup("notcounted-open")}>
               <span class="caret" class:open>▸</span>
               <span class="cardname">{m.sidebar_not_counted()}</span>
-              <span class="cardsum num ncsum">{m.sidebar_not_counted_sum({ count: nc.count })}</span>
             </button>
             {#if open}
               <div class="cardbody notcounted">
@@ -701,9 +701,6 @@
   }
   .warn + .warn {
     border-top: 1px solid var(--line-1);
-  }
-  .ncsum {
-    color: var(--bad);
   }
   .notcounted {
     display: flex;

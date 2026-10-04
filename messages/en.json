@@ -180,21 +180,6 @@
       }
     }
   ],
-  "ov_gear_nc": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
-      "match": {
-        "countPlural=one": "{count} line not counted",
-        "countPlural=*": "{count} lines not counted"
-      }
-    }
-  ],
   "ov_skills": "Skills",
   "ov_skills_sum": [
     {
@@ -245,21 +230,6 @@
     }
   ],
   "ov_health_ok": "Nothing to fix",
-  "ov_nc_msg": [
-    {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
-      "match": {
-        "countPlural=one": "{count} modifier not counted",
-        "countPlural=*": "{count} modifiers not counted"
-      }
-    }
-  ],
   "ov_defences": "Defences",
   "ov_defences_sum": "largest hit you survive",
   "ov_lowest": "lowest",
@@ -444,13 +414,6 @@
   "sidebar_warnings": "Warnings",
   "sidebar_not_counted": "Not counted",
   "sidebar_not_counted_title": "PoB cannot calculate these lines yet, so the stats above leave them out.",
-  "sidebar_not_counted_sum": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": { "countPlural=one": "{count} modifier", "countPlural=*": "{count} modifiers" }
-    }
-  ],
   "not_calculated": "(not calculated)",
   "sidebar_no_build": "No build loaded",
   "sidebar_breakdown": "Breakdown",
