@@ -310,7 +310,7 @@ fn defs_poe2() -> Vec<ToolDef> {
             obj(json!({ "fields": { "type": "array", "items": { "type": "string" }, "description": "Stat keys to return" } }), &[]),
         ),
         ro("list_stat_keys", "Every stat key get_stats can return for the open build.", none()),
-        ro("get_sidebar", "The stat panel exactly as the app shows it: labelled rows plus PoB's warnings. Good for a quick human-style summary.", none()),
+        ro("get_sidebar", "The stat panel exactly as the app shows it: labelled rows, PoB's warnings, and the item and passive lines PoB cannot calculate (notCounted). Good for a quick human-style summary.", none()),
         ro(
             "sanity_check",
             "Review the open build and return ranked findings, each with `severity` (high/medium/low), `area`, `message` and a suggested `fix`. Covers resistances, the passive point budget against the character's level, ascendancy points, support count on the main skill, spirit reservation, charm slots (empty, or more charms than the belt allows), life and energy shield for the level, movement speed, unused weapon set points, unmet attribute requirements with the item or gem that sets them, affixes spent on reduced attribute requirements, and gem errors. Run it again after a change: it is the cheapest check that the change did not break something else. An empty list is not proof the build is sound, and a finding is about numbers only: it cannot see how skills interact in play.",
@@ -1003,7 +1003,7 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
                 .and_then(Value::as_array)
                 .map(|w| w.iter().filter_map(Value::as_str).map(strip_escapes).collect())
                 .unwrap_or_default();
-            read(json!({ "rows": rows, "warnings": warnings }))
+            read(json!({ "rows": rows, "warnings": warnings, "notCounted": raw.get("notCounted").cloned().unwrap_or(Value::Null) }))
         }
         "sanity_check" => read(ctx.call("sanity_check", Value::Null)?),
         "build_summary" => read(ctx.call("build_summary", Value::Null)?),
@@ -1022,7 +1022,13 @@ pub(crate) fn run_tool(ctx: &ToolContext, name: &str, args: &JsonObject) -> Resu
         "checkpoint" => read(ctx.call("checkpoint", json!({ "label": arg_str(args, "label") }))?),
         "rollback" => stats(ctx.call("rollback", json!({ "label": arg_str(args, "label") }))?),
         // Tree
-        "get_tree_state" => read(ctx.call("get_tree_state", Value::Null)?),
+        "get_tree_state" => {
+            let mut state = ctx.call("get_tree_state", Value::Null)?;
+            if let Some(o) = state.as_object_mut() {
+                o.remove("unsupported");
+            }
+            read(state)
+        }
         "search_tree" => {
             let ascendancy = match (arg_str(args, "ascendancy_name"), arg_bool(args, "main_tree_only")) {
                 (Some(a), _) if !a.trim().is_empty() => json!(a),

@@ -13,6 +13,8 @@ local dkjson = require("dkjson")
 local main = launch.main
 local build = main.modes["BUILD"]
 main.__reduxBuildGeneration = 0
+main.notSupportedModTooltips = true
+main.notSupportedTooltipText = " ^8(not calculated)"
 
 -- PoB's sidebar rows carry only text. Feeding AddDisplayStatList one entry at
 -- a time tags every row it appends with the entry's stat key and actor, which
@@ -973,7 +975,64 @@ M.get_sidebar = function()
 		}
 	end
 	local warnings = strArray(build.controls.warnings and build.controls.warnings.lines or {})
-	return { rows = rows, warnings = warnings, rev = build.outputRevision }
+	return { rows = rows, warnings = warnings, notCounted = M._nc.list(), rev = build.outputRevision }
+end
+
+-- Lines PoB parsed only partly or not at all; its calcs skip them (Item:BuildModList, PassiveTree:ProcessStats).
+M._nc = {
+	itemTables = { "implicitModLines", "explicitModLines", "enchantModLines", "buffModLines", "runeModLines", "scourgeModLines", "crucibleModLines" },
+}
+
+function M._nc.nodeLines(node)
+	local out = {}
+	for i, line in ipairs(node.sd or {}) do
+		local mod = node.mods and node.mods[i]
+		if mod and line ~= " " and (mod.extra or not mod.list) then out[#out + 1] = line end
+	end
+	return out
+end
+
+function M._nc.itemLines(item)
+	local out = {}
+	for _, key in ipairs(M._nc.itemTables) do
+		for _, modLine in ipairs(item[key] or {}) do
+			if modLine.extra and not modLine.disabled and (not item.CheckModLineVariant or item:CheckModLineVariant(modLine))
+				and not (itemLib.isZeroValueLine and itemLib.isZeroValueLine(modLine.line)) then
+				out[#out + 1] = modLine.line
+			end
+		end
+	end
+	return out
+end
+
+-- Equipped items in the active weapon set and allocated passives, as the last calculation saw them.
+function M._nc.list()
+	local env = build.calcsTab and build.calcsTab.mainEnv
+	local out = { count = 0, items = array({}), nodes = array({}) }
+	if not env then return out end
+	local slots = {}
+	for slot in pairs(env.player.itemList or {}) do slots[#slots + 1] = slot end
+	table.sort(slots)
+	for _, slot in ipairs(slots) do
+		local item = env.player.itemList[slot]
+		local lines = item and M._nc.itemLines(item) or {}
+		if #lines > 0 then
+			out.items[#out.items + 1] = { slot = slot, name = item.name, lines = strArray(lines) }
+			out.count = out.count + #lines
+		end
+	end
+	local ids = {}
+	for id in pairs(env.allocNodes or {}) do ids[#ids + 1] = id end
+	table.sort(ids)
+	for _, id in ipairs(ids) do
+		local node = env.allocNodes[id]
+		local lines = M._nc.nodeLines(node)
+		if #lines > 0 then
+			out.nodes[#out.nodes + 1] = { id = id, name = opt(node.dn), lines = strArray(lines) }
+			out.count = out.count + #lines
+		end
+	end
+	return out
 end
 
 -- Serialise the typed sections a CalcBreakdownControl built (TEXT lines,
@@ -1499,8 +1558,11 @@ M.get_tree_state = function()
 			} or null,
 		}
 	end
+	local unsupported = {}
 	for id, node in pairs(spec.nodes) do
 		local tnode = spec.tree.nodes[id]
+		local nc = M._nc.nodeLines(node)
+		if #nc > 0 then unsupported[tostring(id)] = strArray(nc) end
 		if node.alloc then
 			alloc[#alloc + 1] = id
 			local set = weaponSetNodes[node.allocMode or 0]
@@ -1640,6 +1702,7 @@ M.get_tree_state = function()
 		allocatedNodes = alloc,
 		allocatedNodeCount = #alloc,
 		grantedNodes = granted,
+		unsupported = unsupported,
 		weaponSet1Nodes = weaponSetNodes[1],
 		weaponSet2Nodes = weaponSetNodes[2],
 		-- A point buys a node in either weapon set, so PoB charges only the larger set.

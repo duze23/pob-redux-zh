@@ -41,6 +41,8 @@ const HEX_ALIASES: Record<string, string> = {
   "d02090": "var(--c-chaos)",
   "808080": "var(--fg-2)",
   "e05030": "var(--bad)",
+  // UNSUPPORTED: a line PoB cannot calculate.
+  f05050: "var(--bad)",
   // PoB's NEGATIVE code, the counterpart of the already-mapped POSITIVE 33ff77.
   dd0022: "var(--bad)",
   "ff9922": "var(--warn)",

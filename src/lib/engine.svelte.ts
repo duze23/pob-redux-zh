@@ -464,9 +464,16 @@ export interface CalcEffect {
   count: number | null;
 }
 
+export interface NotCounted {
+  count: number;
+  items: { slot: string; name: string; lines: string[] }[];
+  nodes: { id: number; name: string | null; lines: string[] }[];
+}
+
 export interface Sidebar {
   rows: SidebarRow[];
   warnings: string[];
+  notCounted?: NotCounted;
   rev: number;
 }
 
@@ -504,6 +511,8 @@ export interface TreeState {
   allocatedNodeCount: number;
   /** Nodes an item allocates (anoints, Megalomaniac); PoB draws them as allocated. */
   grantedNodes: { id: number; source: string | null; rarity: string | null; slot: string | null }[];
+  /** Per node id, the stat lines PoB cannot calculate. */
+  unsupported?: Record<string, string[]>;
   weaponSet1Nodes: number[];
   weaponSet2Nodes: number[];
   /** Counts weapon-set nodes too; use passivePointsSpent against a point budget. */
