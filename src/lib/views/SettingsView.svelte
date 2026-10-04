@@ -53,9 +53,14 @@
   const themes = $derived<[Theme, string][]>([
     ["system", m.theme_system()],
     ["dark", m.theme_dark()],
-    ["wraeclast", m.theme_wraeclast()],
     ["light", m.theme_light()],
+    ["wraeclast", m.theme_wraeclast()],
+    ["abyss", m.theme_abyss()],
+    ["breach", m.theme_breach()],
+    ["ritual", m.theme_ritual()],
+    ["delirium", m.theme_delirium()],
   ]);
+  const SWATCHES = ["--bg-3", "--line-2", "--ramp-2", "--fg-0", "--focus", "--brand"];
   const languages = $derived<[LocalePreference, string][]>([
     ["system", m.settings_language_system({ language: LOCALE_LABEL[locale.system] })],
     ...LOCALES.map((l): [LocalePreference, string] => [l, LOCALE_LABEL[l]]),
@@ -168,11 +173,24 @@
               {/each}
             </select>
           </label>
-          <div class="opt">
-            <span>{m.settings_theme()}</span>
-            <div class="seg" role="radiogroup" aria-label={m.settings_theme()}>
+          <div class="opt themeopt">
+            <span>
+              {m.settings_theme()}
+              <span class="hint">{m.settings_theme_hint()}</span>
+            </span>
+            <div class="themes" role="radiogroup" aria-label={m.settings_theme()}>
               {#each themes as [id, label] (id)}
-                <button role="radio" aria-checked={ui.theme === id} class:on={ui.theme === id} onclick={() => ui.setTheme(id)}>{label}</button>
+                <button role="radio" aria-checked={ui.theme === id} class={["tcard", id === "system" ? "system scope-dark" : `scope-${id}`]} class:on={ui.theme === id} onclick={() => ui.setTheme(id)}>
+                  {#if id === "system"}<span class="lighthalf scope-light"></span>{/if}
+                  <span class="tname">{label}<i class="cursor"></i></span>
+                  <span class="sw">
+                    {#if id === "system"}
+                      <i class="scope-dark" style:background="var(--fg-0)"></i><i class="scope-dark" style:background="var(--bg-3)"></i><i class="scope-light" style:background="var(--fg-0)"></i><i class="scope-light" style:background="var(--bg-3)"></i>
+                    {:else}
+                      {#each SWATCHES as v (v)}<i style:background={`var(${v})`}></i>{/each}
+                    {/if}
+                  </span>
+                </button>
               {/each}
             </div>
           </div>
@@ -751,6 +769,70 @@
     text-align: right;
     font-size: var(--fs-xs);
     color: var(--fg-2);
+  }
+  .themeopt {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+  .tcard {
+    appearance: none;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 12px 11px;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-2);
+    background: var(--bg-1);
+    color: var(--fg-0);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tcard:hover {
+    background: var(--bg-2);
+  }
+  .tcard.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .lighthalf {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-1);
+    clip-path: polygon(100% 0, 100% 100%, 38% 100%);
+  }
+  .tname {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--fs-sm);
+    font-weight: 500;
+  }
+  .cursor {
+    width: 7px;
+    height: 13px;
+    border-radius: 1px;
+    background: var(--accent);
+  }
+  .sw {
+    position: relative;
+    display: flex;
+    gap: 4px;
+  }
+  .sw i {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--fg-0) 12%, transparent);
   }
   .seg {
     display: inline-flex;

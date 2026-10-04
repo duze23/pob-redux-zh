@@ -71,6 +71,7 @@
 
   --accent: var(--fg-0);
   --accent-fg: var(--bg-0);
+  --glow: transparent;
   --primary-hover: #ffffff;
   --fade-off: 0.55;
   --sel-mix: 38%;
@@ -84,7 +85,8 @@
 /* Light: warm paper, warm ink. Chrome sits a step darker than the work area.
    Paper carries no neon, so the game colours drop to roughly half the
    lightness they have on dark and give up most of their chroma. */
-:root[data-theme="light"] {
+:root[data-theme="light"],
+.scope-light {
   color-scheme: light;
 
   --bg-0: oklch(98.5% 0.004 88);
@@ -128,6 +130,8 @@
   --c-author: oklch(44.0% 0.075 195);
   --c-class: oklch(45.0% 0.150 262);
 
+  --accent: var(--fg-0);
+  --accent-fg: var(--bg-0);
   --primary-hover: #000000;
   /* Paper washes text out faster than near-black does, so the same recessed
      look costs a faded control more of its ink here. */
@@ -144,7 +148,8 @@
 /* Wraeclast: candlelit parchment over brown, with Path of Exile's red as the
    one true accent. Its ink is warm like the light theme's but far lighter, so
    the two never read as the same palette. */
-:root[data-theme="wraeclast"] {
+:root[data-theme="wraeclast"],
+.scope-wraeclast {
   color-scheme: dark;
 
   --bg-0: oklch(34.0% 0.014 255);
@@ -198,6 +203,179 @@
   --shadow-pop: 0 8px 30px rgba(12, 14, 20, 0.45);
   --shadow-modal: 0 12px 40px rgba(12, 14, 20, 0.4);
   --shadow-tooltip: 0 16px 56px rgba(12, 14, 20, 0.65), 0 4px 18px rgba(12, 14, 20, 0.5);
+}
+
+/* Abyss: lightless green-black with the chasm's acid yellow-green as the accent. */
+:root[data-theme="abyss"],
+.scope-abyss {
+  color-scheme: dark;
+
+  --bg-0: oklch(14.4% 0.012 122);
+  --bg-1: oklch(16.9% 0.015 122);
+  --bg-2: oklch(19.4% 0.018 122);
+  --bg-3: oklch(22.2% 0.022 122);
+  --bg-hover: oklch(24.8% 0.026 122);
+  --bg-active: oklch(28.2% 0.032 122);
+
+  --line-0: oklch(22.6% 0.014 122);
+  --line-1: oklch(27.4% 0.019 122);
+  --line-2: oklch(33.6% 0.026 122);
+
+  --fg-0: oklch(95.6% 0.014 112);
+  --ramp-1: oklch(79.0% 0.020 115);
+  --ramp-2: oklch(65.5% 0.024 118);
+  --ramp-3: oklch(60.0% 0.024 118);
+  --ramp-4: oklch(46.5% 0.020 120);
+
+  --focus: oklch(84.0% 0.180 113);
+  --brand: oklch(70.0% 0.150 125);
+
+  --accent: oklch(86.5% 0.195 112);
+  --accent-fg: oklch(18.0% 0.040 122);
+  --primary-hover: oklch(91.0% 0.190 112);
+  --fade-off: 0.55;
+  --sel-mix: 30%;
+  --pob-mix: 100%;
+  --backdrop: rgb(3 5 1 / 0.6);
+  --shadow-pop: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --shadow-tooltip: 0 20px 70px rgba(0, 0, 0, 0.9), 0 6px 24px rgba(0, 0, 0, 0.75);
+  --glow: color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+/* Breach: violet dark with the hand's magenta glow as the accent. */
+:root[data-theme="breach"],
+.scope-breach {
+  color-scheme: dark;
+
+  --bg-0: oklch(14.6% 0.014 302);
+  --bg-1: oklch(17.2% 0.019 302);
+  --bg-2: oklch(19.8% 0.024 302);
+  --bg-3: oklch(22.8% 0.029 302);
+  --bg-hover: oklch(25.6% 0.034 302);
+  --bg-active: oklch(29.0% 0.041 302);
+
+  --line-0: oklch(23.6% 0.025 302);
+  --line-1: oklch(28.8% 0.032 302);
+  --line-2: oklch(35.4% 0.042 302);
+
+  --fg-0: oklch(96.2% 0.014 312);
+  --ramp-1: oklch(80.6% 0.032 308);
+  --ramp-2: oklch(66.8% 0.042 304);
+  --ramp-3: oklch(61.0% 0.042 304);
+  --ramp-4: oklch(47.5% 0.036 302);
+
+  --focus: oklch(68.0% 0.220 304);
+  --brand: oklch(56.0% 0.250 300);
+
+  --accent: oklch(73.5% 0.200 322);
+  --accent-fg: oklch(16.0% 0.030 302);
+  --primary-hover: oklch(79.0% 0.180 322);
+  --fade-off: 0.55;
+  --sel-mix: 36%;
+  --pob-mix: 100%;
+  --backdrop: rgb(8 2 14 / 0.55);
+  --shadow-pop: 0 8px 30px rgba(6, 0, 12, 0.6);
+  --shadow-modal: 0 12px 40px rgba(6, 0, 12, 0.55);
+  --shadow-tooltip: 0 20px 70px rgba(6, 0, 12, 0.9), 0 6px 24px rgba(6, 0, 12, 0.75);
+  --glow: color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+/* Ritual: oxblood dark, bone-white ink and blood red for the accent. */
+:root[data-theme="ritual"],
+.scope-ritual {
+  color-scheme: dark;
+
+  --bg-0: oklch(13.8% 0.016 20);
+  --bg-1: oklch(16.4% 0.021 20);
+  --bg-2: oklch(19.0% 0.026 20);
+  --bg-3: oklch(21.9% 0.031 20);
+  --bg-hover: oklch(24.6% 0.036 20);
+  --bg-active: oklch(28.0% 0.043 20);
+
+  --line-0: oklch(22.8% 0.028 20);
+  --line-1: oklch(27.8% 0.036 20);
+  --line-2: oklch(34.4% 0.046 20);
+
+  --fg-0: oklch(94.8% 0.020 70);
+  --ramp-1: oklch(80.2% 0.026 62);
+  --ramp-2: oklch(66.6% 0.030 50);
+  --ramp-3: oklch(60.8% 0.030 45);
+  --ramp-4: oklch(47.6% 0.028 35);
+
+  --focus: oklch(70.0% 0.160 32);
+  --brand: oklch(58.0% 0.200 25);
+
+  --accent: oklch(52.0% 0.195 25);
+  --accent-fg: oklch(96.5% 0.018 70);
+  --primary-hover: oklch(56.5% 0.205 25);
+  --fade-off: 0.55;
+  --sel-mix: 36%;
+  --pob-mix: 100%;
+  --backdrop: rgb(12 2 2 / 0.6);
+  --shadow-pop: 0 8px 30px rgba(10, 0, 0, 0.6);
+  --shadow-modal: 0 12px 40px rgba(10, 0, 0, 0.55);
+  --shadow-tooltip: 0 20px 70px rgba(10, 0, 0, 0.9), 0 6px 24px rgba(10, 0, 0, 0.75);
+  --glow: color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+/* Delirium: cool silver light with slate ink; game colours follow the light theme's. */
+:root[data-theme="delirium"],
+.scope-delirium {
+  color-scheme: light;
+
+  --bg-0: oklch(97.4% 0.005 235);
+  --bg-1: oklch(94.8% 0.008 235);
+  --bg-2: oklch(92.2% 0.011 235);
+  --bg-3: oklch(89.4% 0.014 235);
+  --bg-hover: oklch(90.4% 0.013 235);
+  --bg-active: oklch(86.4% 0.018 235);
+
+  --line-0: oklch(89.6% 0.013 235);
+  --line-1: oklch(84.6% 0.017 235);
+  --line-2: oklch(77.6% 0.023 235);
+
+  --fg-0: oklch(22.5% 0.024 248);
+  --ramp-1: oklch(36.8% 0.026 246);
+  --ramp-2: oklch(42.0% 0.026 244);
+  --ramp-3: oklch(45.6% 0.024 242);
+  --ramp-4: oklch(57.4% 0.024 240);
+
+  --focus: oklch(52.0% 0.150 240);
+  --brand: oklch(52.0% 0.140 235);
+  --ok: oklch(44.5% 0.108 150);
+  --warn: oklch(45.8% 0.098 65);
+  --bad: oklch(47.4% 0.172 27);
+
+  --c-life: oklch(47.4% 0.172 27);
+  --c-mana: oklch(46.5% 0.169 264);
+  --c-es: oklch(44.5% 0.078 215);
+  --c-fire: oklch(46.6% 0.149 38);
+  --c-cold: oklch(45.5% 0.126 250);
+  --c-lightning: oklch(44.0% 0.092 103);
+  --c-chaos: oklch(47.7% 0.200 305);
+  --c-physical: oklch(44.0% 0.038 80);
+  --c-unique: oklch(46.0% 0.103 55);
+  --c-rare: oklch(45.5% 0.092 92);
+  --c-magic: oklch(47.5% 0.222 272);
+  --c-normal: oklch(36.8% 0.026 246);
+  --c-gem: oklch(44.0% 0.080 176);
+  --c-spirit: oklch(45.0% 0.088 80);
+  --c-currency: oklch(45.5% 0.087 68);
+  --c-author: oklch(44.0% 0.075 195);
+  --c-class: oklch(45.0% 0.150 262);
+
+  --accent: oklch(50.0% 0.125 232);
+  --accent-fg: oklch(98.6% 0.004 235);
+  --primary-hover: oklch(44.0% 0.130 232);
+  --fade-off: 0.7;
+  --sel-mix: 22%;
+  --pob-mix: 38%;
+  --backdrop: rgb(30 40 56 / 0.3);
+  --shadow-pop: 0 8px 30px rgba(30, 40, 56, 0.16);
+  --shadow-modal: 0 12px 40px rgba(30, 40, 56, 0.2);
+  --shadow-tooltip: var(--shadow-modal);
+  --glow: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
 :root {
@@ -289,6 +467,10 @@ summary,
 input[type="checkbox"],
 input[type="radio"] {
   cursor: pointer;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
 }
 button:disabled,
 select:disabled,
@@ -578,12 +760,12 @@ kbd {
     background 0.12s;
 }
 .switch:checked {
-  background: var(--fg-0);
-  border-color: var(--fg-0);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .switch:checked::after {
   transform: translateX(16px);
-  background: var(--bg-0);
+  background: var(--accent-fg);
 }
 .switch:focus-visible {
   outline: 2px solid var(--focus);

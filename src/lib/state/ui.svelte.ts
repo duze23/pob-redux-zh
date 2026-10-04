@@ -15,7 +15,8 @@ export type Jump =
   | { view: "skills"; group: number }
   | { view: "config"; label: string }
   | { view: "calcs"; label: string };
-export type Theme = "system" | "dark" | "wraeclast" | "light";
+export const THEMES = ["system", "dark", "light", "wraeclast", "abyss", "breach", "ritual", "delirium"] as const;
+export type Theme = (typeof THEMES)[number];
 export const SCALE_MIN = 0.75;
 export const SCALE_MAX = 2;
 export const SCALE_STEP = 0.1;
@@ -48,7 +49,7 @@ class UiStore {
       const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
       if (typeof saved.sidebarCollapsed === "boolean") this.sidebarCollapsed = saved.sidebarCollapsed;
       if (saved.treeBarDock === "top" || saved.treeBarDock === "bottom") this.treeBarDock = saved.treeBarDock;
-      if (["system", "dark", "wraeclast", "light"].includes(saved.theme)) this.theme = saved.theme;
+      if ((THEMES as readonly string[]).includes(saved.theme)) this.theme = saved.theme;
       const named = typeof saved.contrast === "string" ? saved.contrast : null;
       if (typeof saved.contrastAuto === "boolean") this.contrastAuto = saved.contrastAuto;
       else if (named) this.contrastAuto = named === "system";
