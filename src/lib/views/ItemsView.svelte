@@ -28,6 +28,7 @@
   import TraderWindow from "$lib/components/TraderWindow.svelte";
   import BuySimilarDialog from "$lib/components/BuySimilarDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import MoreMenu, { type MenuItem } from "$lib/components/MoreMenu.svelte";
   import { m } from "$lib/paraglide/messages";
   import { confirm } from "$lib/state/confirm.svelte";
 
@@ -408,6 +409,18 @@
   const tipCache = new Map<string, Tooltip>();
 
   const activeSet = $derived(itemSets.find((s) => s.active));
+  const setMenu = $derived<MenuItem[]>([
+    { label: m.set_new(), onclick: () => build.run(() => engine.createItemSet()) },
+    { label: m.set_copy(), onclick: () => build.run(() => engine.copyItemSet()) },
+    {
+      label: m.set_rename(),
+      onclick: () => {
+        const t = prompt(m.items_set_name_prompt(), activeSet?.title ?? "");
+        if (t && activeSet) build.run(() => engine.renameItemSet(activeSet.id, t));
+      },
+    },
+    { label: m.set_delete(), danger: true, disabled: itemSets.length <= 1, onclick: () => activeSet && build.run(() => engine.deleteItemSet(activeSet.id)) },
+  ]);
   const shownSlots = $derived((slotsResp?.slots ?? []).filter((s) => s.shown && !s.inactive));
   const gearSlots = $derived(shownSlots.filter((s) => s.nodeId == null));
   const socketSlots = $derived(shownSlots.filter((s) => s.nodeId != null));
@@ -644,21 +657,11 @@
         <option value={s.id}>{stripPobText(s.title)}</option>
       {/each}
     </select>
-    <button class="btn sm ghost" onclick={() => build.run(() => engine.createItemSet())}>{m.common_new()}</button>
-    <button class="btn sm ghost" onclick={() => build.run(() => engine.copyItemSet())}>{m.common_copy_button()}</button>
-    <button
-      class="btn sm ghost"
-      onclick={() => {
-        const t = prompt(m.items_set_name_prompt(), activeSet?.title ?? "");
-        if (t && activeSet) build.run(() => engine.renameItemSet(activeSet.id, t));
-      }}>{m.common_rename()}</button
-    >
-    <button class="btn sm ghost" disabled={itemSets.length <= 1} onclick={() => activeSet && build.run(() => engine.deleteItemSet(activeSet.id))}>{m.common_delete()}</button>
+    <MoreMenu label={m.set_menu()} items={setMenu} />
     <span class="vr"></span>
-    <span class="label">{m.items_weapon_set()}</span>
-    <div class="wset">
-      <button class="btn sm" class:on={!slotsResp?.useSecondWeaponSet} onclick={() => build.run(() => engine.setWeaponSet(1))}>I</button>
-      <button class="btn sm" class:on={slotsResp?.useSecondWeaponSet} onclick={() => build.run(() => engine.setWeaponSet(2))}>II</button>
+    <div class="wset" role="group" aria-label={m.items_weapon_set()} title={m.items_weapon_set()}>
+      <button class="btn sm" class:on={!slotsResp?.useSecondWeaponSet} onclick={() => build.run(() => engine.setWeaponSet(1))}><span class="set1">I</span></button>
+      <button class="btn sm" class:on={slotsResp?.useSecondWeaponSet} onclick={() => build.run(() => engine.setWeaponSet(2))}><span class="set2">II</span></button>
     </div>
     <span class="vr"></span>
     <button class="btn sm" onclick={openCraft}>{m.items_craft()}</button>
@@ -992,6 +995,17 @@
   }
   .wset {
     display: inline-flex;
+  }
+  .wset .set1,
+  .wset .set2 {
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+  .set1 {
+    color: var(--bad);
+  }
+  .set2 {
+    color: var(--ok);
   }
   .subhead {
     display: flex;

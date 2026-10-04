@@ -35,6 +35,7 @@
 
   const tabs = $derived<{ id: ViewId; label: string; key: string }[]>([
     { id: "import", label: m.view_builds(), key: "1" },
+    { id: "overview", label: m.view_overview(), key: "" },
     { id: "tree", label: m.view_tree(), key: "2" },
     { id: "skills", label: m.view_skills(), key: "3" },
     { id: "items", label: m.view_items(), key: "4" },
@@ -132,22 +133,22 @@
         <path d="M5 0.5v11" />
       </svg>
     </button>
+    <div class="game">
+      <select
+        class="select gsel"
+        aria-label={m.titlebar_game()}
+        value={game.current}
+        disabled={game.switching || build.busy > 0}
+        title={GAME_LABEL[game.current]}
+        onchange={onGame}
+      >
+        {#each GAMES as g (g)}
+          <option value={g}>{GAME_SHORT[g]}</option>
+        {/each}
+      </select>
+    </div>
   </div>
 
-  <div class="game">
-    <select
-      class="select gsel"
-      aria-label={m.titlebar_game()}
-      value={game.current}
-      disabled={game.switching || build.busy > 0}
-      title={GAME_LABEL[game.current]}
-      onchange={onGame}
-    >
-      {#each GAMES as g (g)}
-        <option value={g}>{GAME_SHORT[g]}</option>
-      {/each}
-    </select>
-  </div>
 
   <div class="tabs" role="tablist" bind:this={tabsEl}>
     {#each tabs as t (t.id)}
@@ -158,7 +159,7 @@
         aria-selected={build.view === t.id && !appOptions.open}
         disabled={!build.loaded && t.id !== "import"}
         onclick={() => openView(t.id)}
-        title={`Ctrl+${t.key}`}
+        title={t.key ? `Ctrl+${t.key}` : undefined}
       >
         {t.label}
       </button>
@@ -210,9 +211,9 @@
   .titlebar {
     height: var(--titlebar-h);
     display: grid;
-    grid-template-columns: auto auto minmax(0, auto) minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, auto) minmax(0, 1fr) auto auto;
     align-items: stretch;
-    background: var(--bg-1);
+    background: linear-gradient(90deg, var(--glow), transparent 55%), var(--bg-1);
     border-bottom: 1px solid var(--line-0);
     -webkit-app-region: drag;
   }
@@ -268,8 +269,7 @@
   .game {
     display: flex;
     align-items: center;
-    padding: 0 10px;
-    border-right: 1px solid var(--line-0);
+    margin-left: -6px;
     -webkit-app-region: no-drag;
   }
   .gsel {

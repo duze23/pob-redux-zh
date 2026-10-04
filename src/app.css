@@ -349,12 +349,12 @@ label:has(input:disabled) {
   border-color: transparent;
 }
 .btn.on {
-  background: color-mix(in oklab, var(--focus) var(--sel-mix), var(--bg-1));
-  border-color: transparent;
+  background: var(--bg-active);
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line-2));
   color: var(--fg-0);
 }
 .btn.on:hover {
-  background: color-mix(in oklab, var(--focus) calc(var(--sel-mix) + 8%), var(--bg-1));
+  background: color-mix(in oklab, var(--fg-0) 8%, var(--bg-active));
 }
 .btn.sm {
   height: 22px;

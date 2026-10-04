@@ -3,6 +3,7 @@
   import PobText from "./PobText.svelte";
   import BreakdownPanel from "./BreakdownPanel.svelte";
   import Icon from "./Icon.svelte";
+  import MoreMenu, { type MenuItem } from "./MoreMenu.svelte";
   import MinionLibrary from "./MinionLibrary.svelte";
   import { engine, type BreakdownSection } from "$lib/engine.svelte";
   import { build } from "$lib/state/build.svelte";
@@ -104,7 +105,6 @@
   const info = $derived(build.info);
   const side = $derived(build.sidebar);
   const sections = $derived(side ? groupSidebar(side.rows) : []);
-  const cls = $derived(build.classes.find((c) => c.id === info?.classId));
   const groups = $derived(build.skills?.socketGroups ?? []);
   const mainGroup = $derived(groups.find((g) => g.index === info?.mainSocketGroup));
   const mainSkill = $derived(mainGroup?.skills.find((s) => s.index === (mainGroup?.mainActiveSkill ?? 1)) ?? mainGroup?.skills[0]);
@@ -112,11 +112,6 @@
   function patchMainSkill(patch: Parameters<typeof engine.setMainSkillOptions>[1]) {
     if (mainGroup) build.run(() => engine.setMainSkillOptions(mainGroup.index, patch));
   }
-
-  let levelDraft = $state("");
-  $effect(() => {
-    if (info) levelDraft = String(info.level);
-  });
 
   // loadouts: PoB's named tree+items+skills+config combos
   let loadouts = $state<{ loadouts: string[]; active: string | null }>({ loadouts: [], active: null });
@@ -136,10 +131,32 @@
     else if (e.mode === "rename" && loadouts.active && name !== loadouts.active) build.run(() => engine.renameLoadout(loadouts.active!, name));
   }
 
-  function commitLevel() {
-    const n = Number(levelDraft);
-    if (info && Number.isFinite(n) && n !== info.level) build.setLevel(n);
-  }
+  const skillOpen = $derived(!collapsed.has("mainskill"));
+  const skillSummary = $derived(
+    [
+      mainSkill?.name ?? (mainGroup ? stripPobText(mainGroup.displayLabel ?? mainGroup.label ?? "") : ""),
+      mainSkill?.statSets?.[(mainSkill.statSet ?? 1) - 1],
+      mainSkill?.parts?.[(mainSkill.part ?? 1) - 1]?.name,
+      mainSkill?.minions?.find((x) => x.id === (mainSkill?.minion ?? mainSkill?.minions?.[0]?.id))?.name,
+    ].filter((x): x is string => !!x),
+  );
+
+  const buildMenu = $derived<MenuItem[]>([
+    ...(loadouts.loadouts.length
+      ? [
+          { label: m.sidebar_loadout_new(), onclick: () => (loEdit = { mode: "new", draft: "" }) },
+          { label: m.sidebar_loadout_copy(), disabled: !loadouts.active, onclick: () => (loEdit = { mode: "copy", draft: m.sidebar_loadout_copy_suffix({ name: loadouts.active ?? "" }) }) },
+          { label: m.sidebar_loadout_rename(), disabled: !loadouts.active, onclick: () => (loEdit = { mode: "rename", draft: loadouts.active ?? "" }) },
+          {
+            label: m.sidebar_loadout_delete(),
+            danger: true,
+            disabled: loadouts.loadouts.length <= 1 || !loadouts.active,
+            onclick: () => loadouts.active && build.run(() => engine.deleteLoadout(loadouts.active!)),
+          },
+        ]
+      : []),
+    { label: m.sidebar_rename_build(), separator: loadouts.loadouts.length > 0, onclick: () => (nameEdit = info?.name ?? "") },
+  ]);
 
   // Click the build name to rename it; Enter or blur commits, Escape cancels.
   let nameEdit = $state<string | null>(null);
@@ -149,15 +166,6 @@
     if (name && name !== info?.name) build.rename(name);
   }
 
-  function onClass(e: Event) {
-    build.selectClass(Number((e.target as HTMLSelectElement).value), 0);
-  }
-  function onAsc(e: Event) {
-    build.chooseAscendancy(Number((e.target as HTMLSelectElement).value));
-  }
-  function onSecondaryAsc(e: Event) {
-    build.selectClass(undefined, undefined, Number((e.target as HTMLSelectElement).value));
-  }
   function onMainSkill(e: Event) {
     build.setMainSkill(Number((e.target as HTMLSelectElement).value));
   }
@@ -175,8 +183,7 @@
 <aside class="sidebar">
   {#if info}
     <section class="head">
-      <div class="buildname">
-        <span class="label">{m.sidebar_build()}</span>
+      <div class="namerow">
         {#if nameEdit !== null}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -199,206 +206,114 @@
             {#if info.unsaved}<span class="unsaved" title={m.sidebar_unsaved()}>●</span>{/if}
           </button>
         {/if}
+        <MoreMenu label={m.sidebar_build_menu()} align="end" items={buildMenu} />
       </div>
       {#if loadouts.loadouts.length}
-        <div class="field">
-          <span class="label">{m.sidebar_loadout()}</span>
-          {#if loEdit}
-            <input
-              class="input"
-              placeholder={loEdit.mode === "new" ? m.sidebar_loadout_new_placeholder() : loEdit.mode === "copy" ? m.sidebar_loadout_copy_placeholder() : m.sidebar_loadout_rename_placeholder()}
-              bind:value={loEdit.draft}
-              onblur={loCommit}
-              onkeydown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                if (e.key === "Escape") (loEdit = null);
-              }}
-            />
-          {:else}
-            <div class="lorow">
-              <select
-                class="select"
-                value={loadouts.active ?? ""}
-                onchange={(e) => build.run(() => engine.selectLoadout((e.target as HTMLSelectElement).value))}
-                disabled={build.busy > 0}
-                title={m.sidebar_loadout_title()}
-              >
-                {#if !loadouts.active}<option value="">—</option>{/if}
-                {#each loadouts.loadouts as l}
-                  <option value={l}>{stripPobText(l)}</option>
-                {/each}
-              </select>
-              <button class="loact" title={m.sidebar_loadout_new()} aria-label={m.sidebar_loadout_new()} onclick={() => (loEdit = { mode: "new", draft: "" })}>
-                <Icon name="plus" size={13} />
-              </button>
-              <button
-                class="loact"
-                title={m.sidebar_loadout_copy()}
-                aria-label={m.sidebar_loadout_copy()}
-                disabled={!loadouts.active}
-                onclick={() => (loEdit = { mode: "copy", draft: m.sidebar_loadout_copy_suffix({ name: loadouts.active ?? "" }) })}
-              >
-                <Icon name="copy" size={13} />
-              </button>
-              <button
-                class="loact"
-                title={m.sidebar_loadout_rename()}
-                aria-label={m.sidebar_loadout_rename()}
-                disabled={!loadouts.active}
-                onclick={() => (loEdit = { mode: "rename", draft: loadouts.active ?? "" })}
-              >
-                <Icon name="pencil" size={13} />
-              </button>
-              <button
-                class="loact danger"
-                title={m.sidebar_loadout_delete_title()}
-                aria-label={m.sidebar_loadout_delete()}
-                disabled={loadouts.loadouts.length <= 1 || !loadouts.active}
-                onclick={() => loadouts.active && build.run(() => engine.deleteLoadout(loadouts.active!))}
-              >
-                <Icon name="trash" size={13} />
-              </button>
-            </div>
-          {/if}
-        </div>
-      {/if}
-      <div class="row2">
-        <label class="field">
-          <span class="label">{m.sidebar_class()}</span>
-          <select class="select" value={info.classId} onchange={onClass} disabled={build.busy > 0}>
-            {#each build.classes as c}
-              <option value={c.id}>{c.name}</option>
+        {#if loEdit}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="input"
+            placeholder={loEdit.mode === "new" ? m.sidebar_loadout_new_placeholder() : loEdit.mode === "copy" ? m.sidebar_loadout_copy_placeholder() : m.sidebar_loadout_rename_placeholder()}
+            bind:value={loEdit.draft}
+            autofocus
+            onblur={loCommit}
+            onkeydown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") (loEdit = null);
+            }}
+          />
+        {:else}
+          <select
+            class="select loadsel"
+            value={loadouts.active ?? ""}
+            onchange={(e) => build.run(() => engine.selectLoadout((e.target as HTMLSelectElement).value))}
+            disabled={build.busy > 0}
+            aria-label={m.sidebar_loadout()}
+            title={m.sidebar_loadout_title()}
+          >
+            {#if !loadouts.active}<option value="">—</option>{/if}
+            {#each loadouts.loadouts as l}
+              <option value={l}>{stripPobText(l)}</option>
             {/each}
           </select>
-        </label>
-        <label class="field">
-          <span class="label">{m.sidebar_ascendancy()}</span>
-          <select class="select" value={info.ascendClassId} onchange={onAsc} disabled={build.busy > 0}>
-            <option value={0}>{m.sidebar_ascendancy_none()}</option>
-            {#each cls?.ascendancies ?? [] as a}
-              <option value={a.id}>{a.name}</option>
-            {/each}
-          </select>
-        </label>
-      </div>
-      {#if build.secondaryAscendancies.length}
-        <div class="row2">
-          <label class="field wide">
-            <span class="label">{m.sidebar_second_ascendancy()}</span>
-            <select class="select" value={info.secondaryAscendClassId ?? 0} onchange={onSecondaryAsc} disabled={build.busy > 0}>
-              <option value={0}>{m.sidebar_ascendancy_none()}</option>
-              {#each build.secondaryAscendancies as a}
-                <option value={a.id}>{a.name}</option>
-              {/each}
-            </select>
-          </label>
-        </div>
-      {/if}
-      <div class="row2">
-        <div class="field lvl">
-          <span class="label">{m.sidebar_level()}</span>
-          <div class="lvlrow">
-            <input
-              class="input num"
-              type="number"
-              min="1"
-              max="100"
-              bind:value={levelDraft}
-              onchange={commitLevel}
-              onkeydown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-            />
-            <button
-              class="auto"
-              class:on={info.levelAuto}
-              title={info.levelAuto ? m.sidebar_level_auto_on() : m.sidebar_level_auto_off()}
-              onclick={() => build.setLevelAuto(!info.levelAuto)}
-            >{m.sidebar_level_auto()}</button>
-          </div>
-        </div>
-        <div class="field points" title={info.points.requiredLevelText ?? ""}>
-          <span class="label">{m.sidebar_points()}</span>
-          <div class="pts num">
-            <span class:over={info.points.used > info.points.max}>{info.points.used}<span class="dim">/{info.points.max}</span></span>
-            <span class="sep">·</span>
-            <span class="asc" class:over={info.points.ascUsed > info.points.ascMax}>{info.points.ascUsed}<span class="dim">/{info.points.ascMax}</span></span>
-            <span class="dim label2">{m.sidebar_points_asc()}</span>
-          </div>
-        </div>
-      </div>
-      {#if info.points.weaponSet1Used || info.points.weaponSet2Used}
-        {@const wsMax = info.points.weaponSetMax}
-        <div class="row2">
-          <div class="field wide" title={m.sidebar_weapon_set_title({ max: wsMax })}>
-            <span class="label">{m.sidebar_weapon_set_points()}</span>
-            <div class="pts num">
-              <span class:over={info.points.weaponSet1Used > wsMax}><span class="set1">I</span> {info.points.weaponSet1Used}<span class="dim">/{wsMax}</span></span>
-              <span class="sep">·</span>
-              <span class:over={info.points.weaponSet2Used > wsMax}><span class="set2">II</span> {info.points.weaponSet2Used}<span class="dim">/{wsMax}</span></span>
-            </div>
-          </div>
-        </div>
-      {/if}
-      <label class="field">
-        <span class="label">{m.sidebar_main_skill()}</span>
-        <select class="select" value={info.mainSocketGroup} onchange={onMainSkill} disabled={groups.length === 0 || build.busy > 0}>
-          {#if groups.length === 0}
-            <option value={0}>{m.sidebar_no_skills()}</option>
-          {/if}
-          {#each groups as g}
-            <option value={g.index}>{g.grantedBy?.kind === "mechanic" ? "◈ " : g.grantedBy?.kind === "node" ? "✦ " : g.grantedBy ? "⚔ " : ""}{stripPobText(g.displayLabel ?? g.label ?? m.sidebar_group_fallback({ index: g.index }))}{g.duplicateOf ? m.sidebar_group_item_copy({ source: g.duplicateOf }) : ""}</option>
-          {/each}
-        </select>
-      </label>
-      {#if mainGroup && mainGroup.skills.length > 1}
-        <label class="field">
-          <span class="label">{m.sidebar_active_skill()}</span>
-          <select class="select" value={mainGroup.mainActiveSkill ?? 1} onchange={(e) => patchMainSkill({ mainActiveSkill: Number((e.target as HTMLSelectElement).value) })}>
-            {#each mainGroup.skills as s}
-              <option value={s.index}>{s.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if mainSkill?.statSets?.length}
-        <label class="field">
-          <span class="label">{m.sidebar_stat_set()}</span>
-          <select class="select" value={mainSkill.statSet ?? 1} onchange={(e) => patchMainSkill({ statSet: Number((e.target as HTMLSelectElement).value) })}>
-            {#each mainSkill.statSets as label, i}
-              <option value={i + 1}>{label}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if mainSkill?.parts?.length}
-        <label class="field">
-          <span class="label">{m.sidebar_skill_part()}</span>
-          <select class="select" value={mainSkill.part ?? 1} onchange={(e) => patchMainSkill({ part: Number((e.target as HTMLSelectElement).value) })}>
-            {#each mainSkill.parts as part, i}
-              <option value={i + 1}>{part.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if mainSkill?.minions?.length}
-        <label class="field">
-          <span class="label">{m.sidebar_minion()}</span>
-          <select class="select" value={mainSkill.minion ?? mainSkill.minions[0].id} onchange={(e) => patchMainSkill({ minionId: (e.target as HTMLSelectElement).value })}>
-            {#each mainSkill.minions as minion}
-              <option value={minion.id}>{minion.name}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
-      {#if mainSkill?.minionLibrary}
-        <button
-          class="btn sm wide"
-          title={mainSkill.minionLibrary === "beast" ? m.sidebar_manage_beasts_title() : m.sidebar_manage_spectres_title()}
-          onclick={() => (libraryOpen = true)}
-        >
-          {mainSkill.minionLibrary === "beast" ? m.sidebar_manage_beasts() : m.sidebar_manage_spectres()}
-        </button>
+        {/if}
       {/if}
     </section>
+    <div class="charwrap">
+      <section class="scard">
+        <button class="cardhead" aria-expanded={skillOpen} onclick={() => toggleGroup("mainskill")}>
+          <span class="caret" class:open={skillOpen}>▸</span>
+          <span class="cardname">{m.sidebar_stats_for()}</span>
+          {#if !skillOpen && skillSummary.length}
+            <span class="cardsum">{#each skillSummary as part, i}{#if i}<span class="sep">·</span>{/if}{part}{/each}</span>
+          {/if}
+        </button>
+        {#if skillOpen}
+          <div class="cardbody charbody">
+            <label class="field">
+              <span class="label">{m.sidebar_skill()}</span>
+              <select class="select" value={info.mainSocketGroup} onchange={onMainSkill} disabled={groups.length === 0 || build.busy > 0}>
+                {#if groups.length === 0}
+                  <option value={0}>{m.sidebar_no_skills()}</option>
+                {/if}
+                {#each groups as g}
+                  <option value={g.index}>{g.grantedBy?.kind === "mechanic" ? "◈ " : g.grantedBy?.kind === "node" ? "✦ " : g.grantedBy ? "⚔ " : ""}{stripPobText(g.displayLabel ?? g.label ?? m.sidebar_group_fallback({ index: g.index }))}{g.duplicateOf ? m.sidebar_group_item_copy({ source: g.duplicateOf }) : ""}</option>
+                {/each}
+              </select>
+            </label>
+            {#if mainGroup && mainGroup.skills.length > 1}
+              <label class="field">
+                <span class="label">{m.sidebar_active_skill()}</span>
+                <select class="select" value={mainGroup.mainActiveSkill ?? 1} onchange={(e) => patchMainSkill({ mainActiveSkill: Number((e.target as HTMLSelectElement).value) })}>
+                  {#each mainGroup.skills as s}
+                    <option value={s.index}>{s.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            {#if mainSkill?.statSets?.length}
+              <label class="field">
+                <span class="label">{m.sidebar_stat_set()}</span>
+                <select class="select" value={mainSkill.statSet ?? 1} onchange={(e) => patchMainSkill({ statSet: Number((e.target as HTMLSelectElement).value) })}>
+                  {#each mainSkill.statSets as label, i}
+                    <option value={i + 1}>{label}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            {#if mainSkill?.parts?.length}
+              <label class="field">
+                <span class="label">{m.sidebar_skill_part()}</span>
+                <select class="select" value={mainSkill.part ?? 1} onchange={(e) => patchMainSkill({ part: Number((e.target as HTMLSelectElement).value) })}>
+                  {#each mainSkill.parts as part, i}
+                    <option value={i + 1}>{part.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            {#if mainSkill?.minions?.length}
+              <label class="field">
+                <span class="label">{m.sidebar_minion()}</span>
+                <select class="select" value={mainSkill.minion ?? mainSkill.minions[0].id} onchange={(e) => patchMainSkill({ minionId: (e.target as HTMLSelectElement).value })}>
+                  {#each mainSkill.minions as minion}
+                    <option value={minion.id}>{minion.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            {#if mainSkill?.minionLibrary}
+              <button
+                class="btn sm wide"
+                title={mainSkill.minionLibrary === "beast" ? m.sidebar_manage_beasts_title() : m.sidebar_manage_spectres_title()}
+                onclick={() => (libraryOpen = true)}
+              >
+                {mainSkill.minionLibrary === "beast" ? m.sidebar_manage_beasts() : m.sidebar_manage_spectres()}
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </section>
+    </div>
 
     {#if libraryOpen}
       <MinionLibrary kind={mainSkill?.minionLibrary ?? "spectre"} onclose={() => (libraryOpen = false)} />
@@ -472,6 +387,27 @@
             {/if}
           </section>
         {/if}
+        {#if side.notCounted?.count}
+          {@const nc = side.notCounted}
+          {@const open = !collapsed.has("notcounted")}
+          <section class="scard">
+            <button class="cardhead" aria-expanded={open} title={m.sidebar_not_counted_title()} onclick={() => toggleGroup("notcounted")}>
+              <span class="caret" class:open>▸</span>
+              <span class="cardname">{m.sidebar_not_counted()}</span>
+              <span class="cardsum num ncsum">{m.sidebar_not_counted_sum({ count: nc.count })}</span>
+            </button>
+            {#if open}
+              <div class="cardbody notcounted">
+                {#each [...nc.items.map((x) => ({ key: x.slot, head: x.slot, sub: stripPobText(x.name), lines: x.lines })), ...nc.nodes.map((x) => ({ key: String(x.id), head: x.name ?? "", sub: "", lines: x.lines }))] as src (src.key)}
+                  <div class="ncsrc">
+                    <div class="nchead">{src.head}{#if src.sub}<span class="dim">{` · ${src.sub}`}</span>{/if}</div>
+                    {#each src.lines as l}<div class="ncline">{l}</div>{/each}
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </section>
+        {/if}
       {/if}
     </div>
   {:else}
@@ -503,44 +439,56 @@
     min-height: 0;
   }
   .head {
-    padding: 10px 12px 12px;
+    padding: 10px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .namerow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .namerow .bname,
+  .namerow .input {
+    flex: 1;
+  }
+  .loadsel {
+    align-self: flex-start;
+    max-width: 100%;
+    height: 22px;
+    padding-left: 0;
+    border-color: transparent;
+    background-color: transparent;
+    color: var(--fg-2);
+    font-size: var(--fs-xs);
+  }
+  .loadsel:hover {
+    color: var(--fg-0);
+  }
+  .charwrap {
+    padding: 0 12px 12px;
     border-bottom: 1px solid var(--line-0);
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
+  .charbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px 10px;
+  }
   .btn.wide {
     width: 100%;
     margin-top: 2px;
-  }
-  .field.wide {
-    grid-column: 1 / -1;
-  }
-  .row2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
   }
   .field {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
-  }
-  .buildname {
-    padding: 0 0 8px;
-    margin-bottom: 2px;
-    border-bottom: 1px solid var(--line-0);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    text-align: left;
-    min-width: 0;
-  }
-  .buildname .label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
   }
   .bname {
     appearance: none;
@@ -570,96 +518,6 @@
     color: var(--warn);
     font-size: 10px;
     flex: 0 0 auto;
-  }
-  .lorow {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .lorow .select {
-    flex: 1;
-    min-width: 0;
-  }
-  .loact {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    width: 26px;
-    height: 26px;
-    padding: 0;
-    border: 1px solid var(--line-1);
-    border-radius: var(--r-1);
-    background: var(--bg-2);
-    color: var(--fg-1);
-    cursor: pointer;
-    transition: background 80ms linear, border-color 80ms linear, color 80ms linear;
-  }
-  .loact:hover:not(:disabled) {
-    background: var(--bg-hover);
-    color: var(--fg-0);
-  }
-  .loact.danger:hover:not(:disabled) {
-    color: var(--bad);
-  }
-  .loact:disabled {
-    opacity: var(--fade-off);
-    cursor: default;
-  }
-  .lvl .input {
-    width: 100%;
-  }
-  .lvlrow {
-    display: flex;
-    align-items: stretch;
-    gap: 4px;
-  }
-  .lvlrow .auto {
-    appearance: none;
-    flex: none;
-    padding: 0 7px;
-    border: 1px solid var(--line-1);
-    border-radius: var(--r-1);
-    background: transparent;
-    color: var(--fg-3);
-    font-family: var(--font-mono);
-    font-size: var(--fs-2xs);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-  .lvlrow .auto:hover {
-    color: var(--fg-0);
-  }
-  .lvlrow .auto.on {
-    color: var(--ok);
-  }
-  .pts {
-    height: 26px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--fs-sm);
-    color: var(--fg-0);
-    padding: 0 2px;
-  }
-  .pts .sep {
-    color: var(--fg-3);
-  }
-  .label2 {
-    font-size: var(--fs-xs);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .over {
-    color: var(--bad);
-  }
-  .set1 {
-    color: var(--bad);
-  }
-  .set2 {
-    color: var(--ok);
   }
   .stats {
     flex: 1;
@@ -843,6 +701,29 @@
   }
   .warn + .warn {
     border-top: 1px solid var(--line-1);
+  }
+  .ncsum {
+    color: var(--bad);
+  }
+  .notcounted {
+    display: flex;
+    flex-direction: column;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .ncsrc {
+    padding: 6px 0;
+    font-size: var(--fs-xs);
+    line-height: 1.35;
+  }
+  .ncsrc + .ncsrc {
+    border-top: 1px solid var(--line-1);
+  }
+  .nchead {
+    color: var(--fg-1);
+  }
+  .ncline {
+    color: var(--bad);
   }
   .empty {
     flex: 1;

@@ -41,6 +41,11 @@
   "theme_dark": "Dark",
   "theme_wraeclast": "Wraeclast",
   "theme_light": "Light",
+  "theme_abyss": "Abyss",
+  "theme_breach": "Breach",
+  "theme_ritual": "Ritual",
+  "theme_delirium": "Delirium",
+  "settings_theme_hint": "System follows your computer between Dark and Light.",
 
   "settings_contrast": "Contrast",
   "settings_contrast_hint": "Lifts the grey text tones. Auto follows the OS setting.",
@@ -139,6 +144,199 @@
   "game_switch_ok": "Switch",
   "game_switch_cancel": "Stay",
 
+  "view_overview": "Overview",
+  "ov_dps": "DPS",
+  "ov_dot_dps": "DoT DPS",
+  "ov_average_damage": "average damage",
+  "ov_average_hit": "average hit",
+  "ov_level": "Level",
+  "ov_per_second": " per second",
+  "ov_crit": "crit",
+  "ov_crit_multi": "crit multiplier",
+  "ov_hit": "hit",
+  "ov_life": "Life",
+  "ov_es": "Energy shield",
+  "ov_ehp": "Effective HP",
+  "ov_mana": "Mana",
+  "ov_spirit": "Spirit",
+  "ov_physical": "Physical",
+  "ov_fire": "Fire",
+  "ov_cold": "Cold",
+  "ov_lightning": "Lightning",
+  "ov_chaos": "Chaos",
+  "ov_gear": "Gear",
+  "ov_gear_sum": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} equipped",
+        "countPlural=*": "{count} equipped"
+      }
+    }
+  ],
+  "ov_gear_nc": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} line not counted",
+        "countPlural=*": "{count} lines not counted"
+      }
+    }
+  ],
+  "ov_skills": "Skills",
+  "ov_skills_sum": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} skill",
+        "countPlural=*": "{count} skills"
+      }
+    }
+  ],
+  "ov_persistent": "Persistent",
+  "ov_spirit_used": "{used} of {total} spirit",
+  "ov_more_skills": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} more skill",
+        "countPlural=*": "{count} more skills"
+      }
+    }
+  ],
+  "ov_health": "Build health",
+  "ov_health_sum": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} to look at",
+        "countPlural=*": "{count} to look at"
+      }
+    }
+  ],
+  "ov_health_ok": "Nothing to fix",
+  "ov_nc_msg": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} modifier not counted",
+        "countPlural=*": "{count} modifiers not counted"
+      }
+    }
+  ],
+  "ov_defences": "Defences",
+  "ov_defences_sum": "largest hit you survive",
+  "ov_lowest": "lowest",
+  "ov_evasion": "Evasion",
+  "ov_evade_melee": "{value}% vs melee",
+  "ov_armour": "Armour",
+  "ov_block": "Block",
+  "ov_spell": "spell",
+  "ov_suppression": "Spell suppression",
+  "ov_life_regen": "Life regen",
+  "ov_mana_regen": "Mana regen",
+  "ov_movement": "Movement speed",
+  "ov_passives": "Passives",
+  "ov_keystones": "Keystones",
+  "ov_ascendancy": "Ascendancy",
+  "ov_notables": "Notables",
+  "ov_notables_count": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} allocated",
+        "countPlural=*": "{count} allocated"
+      }
+    }
+  ],
+  "ov_weapon_sets": "Weapon sets",
+  "ov_jewels": "Jewels",
+  "ov_jewels_sum": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} socketed",
+        "countPlural=*": "{count} socketed"
+      }
+    }
+  ],
+  "ov_jewels_unique": [
+    {
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
+      "match": {
+        "countPlural=one": "{count} unique",
+        "countPlural=*": "{count} unique"
+      }
+    }
+  ],
+  "char_class": "Class",
+  "char_ascendancy": "Ascendancy",
+  "char_apply": "Apply",
+  "char_new_title": "New build",
+  "char_asc_title": "Change ascendancy",
+  "char_start": "Start",
+  "ov_asc_title": "Change ascendancy. The points in the current one are refunded.",
+  "char_refund": [
+    {
+      "declarations": ["input count", "input name", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "The {count} point in {name} is refunded.", "countPlural=*": "The {count} points in {name} are refunded." }
+    }
+  ],
   "view_builds": "Builds",
   "view_tree": "Tree",
   "view_skills": "Skills",
@@ -202,6 +400,10 @@
 
   "sidebar_build": "Build",
   "sidebar_rename_title": "Click to rename. The file is renamed with it.",
+  "sidebar_build_menu": "Build and loadout actions",
+  "sidebar_rename_build": "Rename build",
+  "sidebar_skill": "Skill",
+  "sidebar_stats_for": "Stats for",
   "sidebar_not_saved": "Not saved yet. ",
   "sidebar_unsaved": "Unsaved changes (Ctrl+S saves)",
   "sidebar_loadout": "Loadout",
@@ -240,6 +442,16 @@
   "sidebar_manage_spectres": "Manage spectres…",
   "sidebar_manage_spectres_title": "Choose which spectres this build owns, so a Raise Spectre gem can use them",
   "sidebar_warnings": "Warnings",
+  "sidebar_not_counted": "Not counted",
+  "sidebar_not_counted_title": "PoB cannot calculate these lines yet, so the stats above leave them out.",
+  "sidebar_not_counted_sum": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} modifier", "countPlural=*": "{count} modifiers" }
+    }
+  ],
+  "not_calculated": "(not calculated)",
   "sidebar_no_build": "No build loaded",
   "sidebar_breakdown": "Breakdown",
   "sidebar_breakdown_pinned": "pinned",
@@ -925,9 +1137,20 @@
   "tree_compare_off": "Compare: off",
   "tree_compare_vs": "vs {title}",
   "tree_allocate_into": "Allocate into",
-  "tree_allocate_into_title": "Where a click allocates passives. Alt + scroll over the tree also changes it.",
-  "tree_set_1": "Set I",
-  "tree_set_2": "Set II",
+  "tree_allocate_into_title": "Where a click allocates passives. I and II also dim the other set's passives. Alt + scroll over the tree changes it.",
+  "tree_set_all": "All",
+  "tree_set_1": "Weapon set I",
+  "tree_set_2": "Weapon set II",
+  "set_menu": "Set actions",
+  "set_new": "New set",
+  "set_copy": "Copy set",
+  "set_rename": "Rename set",
+  "set_delete": "Delete set",
+  "tree_spec_menu": "Tree actions",
+  "tree_rename_title": "Rename tree",
+  "tree_link_menu": "Tree link",
+  "tree_points_asc": "asc",
+  "tree_level_short": "Lv",
   "tree_search": "Search nodes… (Enter jumps)",
   "tree_class": "Class",
   "tree_class_title": "Center on class start (h)",

@@ -7,6 +7,7 @@
   import { game } from "$lib/state/game.svelte";
   import PobText from "$lib/components/PobText.svelte";
   import PobTooltip from "$lib/components/PobTooltip.svelte";
+  import MoreMenu, { type MenuItem } from "$lib/components/MoreMenu.svelte";
   import { stripPobText } from "$lib/pobtext";
   import { m } from "$lib/paraglide/messages";
 
@@ -183,6 +184,18 @@
   }
 
   const activeSet = $derived(skillSets.find((s) => s.active));
+  const setMenu = $derived<MenuItem[]>([
+    { label: m.set_new(), onclick: () => build.run(() => engine.createSkillSet()) },
+    { label: m.set_copy(), onclick: () => build.run(() => engine.copySkillSet()) },
+    {
+      label: m.set_rename(),
+      onclick: () => {
+        setDraft = activeSet?.title ?? "";
+        renamingSet = true;
+      },
+    },
+    { label: m.set_delete(), danger: true, disabled: skillSets.length <= 1, onclick: () => activeSet && build.run(() => engine.deleteSkillSet(activeSet.id)) },
+  ]);
 
   // Item-, node- and mechanic-granted groups, and gems the game hands out
   // (a weapon's default attack, Raise Shield): each gets a mark and a sentence.
@@ -230,16 +243,7 @@
         {/each}
       </select>
     {/if}
-    <button class="btn sm ghost" onclick={() => build.run(() => engine.createSkillSet())}>{m.common_new()}</button>
-    <button class="btn sm ghost" onclick={() => build.run(() => engine.copySkillSet())}>{m.common_copy_button()}</button>
-    <button
-      class="btn sm ghost"
-      onclick={() => {
-        setDraft = activeSet?.title ?? "";
-        renamingSet = true;
-      }}>{m.common_rename()}</button
-    >
-    <button class="btn sm ghost" disabled={skillSets.length <= 1} onclick={() => activeSet && build.run(() => engine.deleteSkillSet(activeSet.id))}>{m.common_delete()}</button>
+    <MoreMenu label={m.set_menu()} items={setMenu} />
     <span class="vr"></span>
     <button class="btn sm" onclick={addGroup}>{m.skills_new_group()}</button>
     <button class="btn sm ghost" disabled={!sel} onclick={copyGroup} title={m.skills_copy_group_title()}>{m.skills_copy_group()}</button>

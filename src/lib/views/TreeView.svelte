@@ -13,6 +13,8 @@
   import { stripPobText } from "$lib/pobtext";
   import TimelessSearch from "$lib/components/TimelessSearch.svelte";
   import Kbd from "$lib/components/Kbd.svelte";
+  import Icon from "$lib/components/Icon.svelte";
+  import MoreMenu, { type MenuItem } from "$lib/components/MoreMenu.svelte";
   import { modKey } from "$lib/keys";
   import { m } from "$lib/paraglide/messages";
   import { recipeArt } from "$lib/item-art";
@@ -447,6 +449,44 @@
     return S.mode === 0 && S.hover !== null && !S.alloc.has(S.hover.id) && S.path.has(n.id) && S.alloc.has(n.id) && S.ws.has(n.id);
   }
 
+  const OTHER_SET_ALPHA = 0.3;
+  /** With weapon set I or II chosen, a node allocated in the other set. */
+  function otherSet(id: number, S: Scene): boolean {
+    return S.mode !== 0 && (S.ws.get(id) ?? S.mode) !== S.mode;
+  }
+
+  let levelDraft = $state("");
+  $effect(() => {
+    if (build.info) levelDraft = String(build.info.level);
+  });
+  function commitLevel() {
+    const n = Number(levelDraft);
+    if (build.info && Number.isFinite(n) && n !== build.info.level) build.setLevel(n);
+  }
+
+  const specMenu = $derived<MenuItem[]>([
+    { label: m.tree_new_title(), onclick: () => build.createSpec() },
+    { label: m.tree_copy_title(), onclick: () => build.copySpec() },
+    {
+      label: m.tree_rename_title(),
+      onclick: () => {
+        renameDraft = activeSpec?.title ?? "";
+        renaming = true;
+      },
+    },
+    { label: m.tree_delete_title(), danger: true, disabled: build.specs.length <= 1, onclick: () => activeSpec && build.deleteSpec(activeSpec.index) },
+  ]);
+  const linkMenu = $derived<MenuItem[]>([
+    {
+      label: m.tree_import_link(),
+      onclick: () => {
+        urlPanel = urlPanel === "import" ? null : "import";
+        urlDraft = "";
+      },
+    },
+    { label: m.tree_export_link(), onclick: exportUrl },
+  ]);
+
   /** The weapon set whose colour a node's frame takes (PassiveTreeView's allocModeColor), or 0. */
   function tintFor(n: TNode, S: Scene): number {
     if (S.heat || S.cmp || n.kind === "socket") return 0;
@@ -577,7 +617,7 @@
   // Blitting tiles magnified past this looks soft, so they are redrawn.
   const ZOOM_BAND = 1.7;
   function layerKey(S: Scene): unknown[] {
-    return [dpr, model, S.alloc, S.granted, S.ws, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
+    return [dpr, model, S.alloc, S.granted, S.ws, S.mode, overrides, S.sockets, S.asc, S.cls, S.match, S.cmp, S.heat];
   }
   function dropSet(set: TileSet | null) {
     if (!set) return;
@@ -1047,7 +1087,7 @@
         const dimAsc = n.asc !== null && n.asc !== S.ascNodes;
         const sx = tx(n.x);
         const sy = ty(n.y);
-        ctx.globalAlpha = (lit ? 1 : 0.15) * (dimAsc ? 0.6 : 1);
+        ctx.globalAlpha = (lit ? 1 : 0.15) * (dimAsc ? 0.6 : 1) * (otherSet(n.id, S) ? OTHER_SET_ALPHA : 1);
         A.draw(ctx, effect, sx, sy, half, half);
       }
       ctx.globalAlpha = 1;
@@ -1060,7 +1100,7 @@
       if (!boxInView(e.box)) continue;
       const a = M.nodes.get(e.a)!;
       const b = M.nodes.get(e.b)!;
-      const dim = e.asc !== null && e.asc !== S.ascNodes;
+      const dim = (e.asc !== null && e.asc !== S.ascNodes) || otherSet(e.a, S) || otherSet(e.b, S);
       edgeBuckets[EDGE_INDEX[edgeState(a, b, S)] * 2 + (dim ? 1 : 0)].push(e);
     }
     for (let i = 0; i < EDGE_ORDER.length; i++) {
@@ -1095,6 +1135,7 @@
       const st = heat ? "alloc" : nodeState(n, S);
       const onPath = S.path.has(n.id);
       const dimAsc = n.asc !== null && n.asc !== S.ascNodes;
+      const baseAlpha = (dimAsc ? 0.6 : 1) * (otherSet(n.id, S) ? OTHER_SET_ALPHA : 1);
 
       if (!A) {
         drawFallback(ctx, n, sx, sy, lit, onPath, S.hover?.id === n.id);
@@ -1119,7 +1160,7 @@
         continue;
       }
 
-      ctx.globalAlpha = dimAsc ? 0.6 : 1;
+      ctx.globalAlpha = baseAlpha;
 
       if (heat && !lit) {
         const col = powerColor(n.id, S);
@@ -1149,7 +1190,7 @@
           const icon = iconFor(n, S, lit);
           if (!lit && !heat) ctx.globalAlpha *= 0.7;
           drawCircularAsset(ctx, A, icon, sx, sy, n.size.base * scale, !lit && !heat);
-          ctx.globalAlpha = dimAsc ? 0.6 : 1;
+          ctx.globalAlpha = baseAlpha;
         }
         const half = n.size.overlay * scale;
         const tint = tintFor(n, S);
@@ -2083,17 +2124,7 @@
           {/each}
         </select>
       {/if}
-      <button class="btn sm ghost" title={m.tree_new_title()} onclick={() => build.createSpec()}>{m.common_new()}</button>
-      <button class="btn sm ghost" title={m.tree_copy_title()} onclick={() => build.copySpec()}>{m.common_copy_button()}</button>
-      <button
-        class="btn sm ghost"
-        title={m.common_rename()}
-        onclick={() => {
-          renameDraft = activeSpec?.title ?? "";
-          renaming = true;
-        }}>{m.common_rename()}</button
-      >
-      <button class="btn sm ghost" title={m.tree_delete_title()} disabled={build.specs.length <= 1} onclick={() => activeSpec && build.deleteSpec(activeSpec.index)}>{m.common_delete()}</button>
+      <MoreMenu label={m.tree_spec_menu()} items={specMenu} />
       <span class="vr"></span>
       <select
         class="select sm cmp"
@@ -2109,14 +2140,42 @@
       </select>
     </div>
     {#if game.isPoe2}
-      <div class="group" role="group" aria-label={m.tree_allocate_into()} title={m.tree_allocate_into_title()}>
-        <button class="btn sm ghost" class:on={wsMode === 0} onclick={() => setWeaponSet(0)}>{m.view_tree()}</button>
-        <button class="btn sm ghost set1" class:on={wsMode === 1} onclick={() => setWeaponSet(1)}>
-          {m.tree_set_1()} <span class="num">{build.tree?.weaponSet1PointsUsed ?? 0}/{wsMax}</span>
+      <div class="seg" role="group" aria-label={m.tree_allocate_into()} title={m.tree_allocate_into_title()}>
+        <button class:on={wsMode === 0} onclick={() => setWeaponSet(0)}>{m.tree_set_all()}</button>
+        <button class="s1" class:on={wsMode === 1} aria-label={m.tree_set_1()} onclick={() => setWeaponSet(1)}>
+          <span class="rn set1">I</span><span class="num" class:over={(build.tree?.weaponSet1PointsUsed ?? 0) > wsMax}>{build.tree?.weaponSet1PointsUsed ?? 0}/{wsMax}</span>
         </button>
-        <button class="btn sm ghost set2" class:on={wsMode === 2} onclick={() => setWeaponSet(2)}>
-          {m.tree_set_2()} <span class="num">{build.tree?.weaponSet2PointsUsed ?? 0}/{wsMax}</span>
+        <button class="s2" class:on={wsMode === 2} aria-label={m.tree_set_2()} onclick={() => setWeaponSet(2)}>
+          <span class="rn set2">II</span><span class="num" class:over={(build.tree?.weaponSet2PointsUsed ?? 0) > wsMax}>{build.tree?.weaponSet2PointsUsed ?? 0}/{wsMax}</span>
         </button>
+      </div>
+    {/if}
+    {#if build.info}
+      {@const pts = build.info.points}
+      <div class="group pts num" title={pts.requiredLevelText ?? ""}>
+        <label class="lvl">
+          <span class="dim">{m.tree_level_short()}</span>
+          <input
+            class="input lvlin num"
+            type="number"
+            min="1"
+            max="100"
+            bind:value={levelDraft}
+            onchange={commitLevel}
+            onkeydown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          />
+        </label>
+        <button
+          class="btn sm ghost lvlauto"
+          class:on={build.info.levelAuto}
+          title={build.info.levelAuto ? m.sidebar_level_auto_on() : m.sidebar_level_auto_off()}
+          onclick={() => build.setLevelAuto(!build.info?.levelAuto)}>{m.sidebar_level_auto()}</button
+        >
+        <span class="vr"></span>
+        <span class:over={pts.used > pts.max}>{pts.used}<span class="dim">/{pts.max}</span></span>
+        <span class="dim">·</span>
+        <span class:over={pts.ascUsed > pts.ascMax}>{pts.ascUsed}<span class="dim">/{pts.ascMax}</span></span>
+        <span class="dim">{m.tree_points_asc()}</span>
       </div>
     {/if}
     <div class="group">
@@ -2127,12 +2186,11 @@
       {#if matches.size}<span class="dim num">{matches.size}</span>{/if}
       <button class="btn sm ghost" onclick={focusClass} title={m.tree_class_title()}>{m.tree_class()}</button>
       <button class="btn sm ghost" onclick={focusAscendancy} disabled={!currentAsc} title={currentAsc ? m.tree_ascendancy_title() : m.tree_ascendancy_none()}>{m.tree_ascendancy()}</button>
-      <button class="btn sm ghost" onclick={fitAll} title={m.tree_fit_title()}>{m.tree_fit()}</button>
-      <button class="btn sm ghost" onclick={() => build.undo()} title={m.tree_undo_title()}>{m.tree_undo()}</button>
-      <button class="btn sm ghost" onclick={() => build.redo()} title={m.tree_redo_title()}>{m.tree_redo()}</button>
       <span class="vr"></span>
-      <button class="btn sm ghost" onclick={() => { urlPanel = urlPanel === "import" ? null : "import"; urlDraft = ""; }} title={m.tree_import_link_title()}>{m.tree_import_link()}</button>
-      <button class="btn sm ghost" onclick={exportUrl} title={m.tree_export_link_title()}>{m.tree_export_link()}</button>
+      <button class="btn sm ghost icon" onclick={fitAll} title={m.tree_fit_title()} aria-label={m.tree_fit()}><Icon name="corners-out" size={14} /></button>
+      <button class="btn sm ghost icon" onclick={() => build.undo()} title={m.tree_undo_title()} aria-label={m.tree_undo()}><Icon name="arrow-counter-clockwise" size={14} /></button>
+      <button class="btn sm ghost icon" onclick={() => build.redo()} title={m.tree_redo_title()} aria-label={m.tree_redo()}><Icon name="arrow-clockwise" size={14} /></button>
+      <MoreMenu label={m.tree_link_menu()} icon="link" items={linkMenu} />
       {#if game.isPoe1}
         <button class="btn sm ghost" onclick={() => (timelessOpen = true)} title={m.tree_timeless_title()}>{m.tree_timeless()}</button>
       {/if}
@@ -2325,6 +2383,7 @@
     {#if hover && !attrMenu && !masteryMenu}
       {@const ov = overrides[String(hover.id)]}
       {@const socketed = hover.kind === "socket" ? sockets.get(hover.id) : undefined}
+      {@const notCalc = new Set(build.tree?.unsupported?.[String(hover.id)] ?? [])}
       <div class="tip" bind:this={tipEl} style:left={`${tipPlacement.node}px`} style:top={`${Math.max(8, Math.min(mouse.y + 18, h - tipH - 8))}px`}>
         <div class="tip-head">
           <span class="tip-name" class:key={hover.kind === "keystone"} class:notable={hover.kind === "notable"}>{ov?.name ?? hover.name}</span>
@@ -2343,7 +2402,8 @@
           </div>
         {/if}
         {#each ov?.stats?.length ? ov.stats : hover.stats as s}
-          <div class="tip-stat">{s}</div>
+          {@const nc = notCalc.size > 0 && s.split("\n").some((l) => notCalc.has(l))}
+          <div class="tip-stat" class:nc>{s}{#if nc}<span class="ncnote">{` ${m.not_calculated()}`}</span>{/if}</div>
         {/each}
         {#if hover.masteryEffects && !allocated.has(hover.id)}
           {#each hover.masteryEffects as e (e.effect)}
@@ -2483,24 +2543,98 @@
     background: var(--line-1);
     margin: 0 2px;
   }
-  .btn.set1.on {
-    background: color-mix(in oklab, var(--bad) var(--sel-mix), var(--bg-1));
+  .seg {
+    display: inline-flex;
+    height: 24px;
+    border: 1px solid var(--line-1);
+    border-radius: var(--r-1);
+    overflow: hidden;
   }
-  .btn.set1.on:hover {
-    background: color-mix(in oklab, var(--bad) calc(var(--sel-mix) + 8%), var(--bg-1));
+  .seg button {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 0;
+    border-right: 1px solid var(--line-1);
+    background: transparent;
+    color: var(--fg-2);
+    font: inherit;
+    font-size: var(--fs-xs);
+    cursor: pointer;
   }
-  .btn.set2.on {
-    background: color-mix(in oklab, var(--ok) var(--sel-mix), var(--bg-1));
+  .seg button:last-child {
+    border-right: 0;
   }
-  .btn.set2.on:hover {
-    background: color-mix(in oklab, var(--ok) calc(var(--sel-mix) + 8%), var(--bg-1));
+  .seg button:hover {
+    background: var(--bg-hover);
+    color: var(--fg-0);
   }
-  .btn .num {
-    margin-left: 4px;
+  .seg button.on {
+    background: var(--bg-active);
+    color: var(--fg-0);
+  }
+  .seg button.s1.on {
+    background: color-mix(in oklab, var(--bad) 22%, var(--bg-1));
+  }
+  .seg button.s2.on {
+    background: color-mix(in oklab, var(--ok) 22%, var(--bg-1));
+  }
+  .seg .rn {
+    font-family: var(--font-mono);
+    font-weight: 600;
+  }
+  .seg .num {
     color: var(--fg-3);
   }
-  .btn.on .num {
+  .seg button.on .num {
     color: var(--fg-1);
+  }
+  .set1 {
+    color: var(--bad);
+  }
+  .set2 {
+    color: var(--ok);
+  }
+  .pts {
+    gap: 4px;
+    font-size: var(--fs-xs);
+    color: var(--fg-0);
+  }
+  .lvl {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .lvlin {
+    width: 52px;
+    height: 22px;
+    padding: 0 6px;
+    font-size: var(--fs-xs);
+    text-align: center;
+  }
+  .lvlin::-webkit-inner-spin-button {
+    display: none;
+  }
+  .lvlauto {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .lvlauto.on {
+    color: var(--ok);
+    background: transparent;
+  }
+  .seg .num.over,
+  .pts .over {
+    color: var(--bad);
+  }
+  .btn.icon {
+    width: 24px;
+    padding: 0;
+    justify-content: center;
   }
   .wsbadge {
     position: absolute;
@@ -2768,6 +2902,12 @@
     color: var(--c-magic);
     line-height: 1.35;
     white-space: pre-line;
+  }
+  .tip-stat.nc {
+    color: var(--bad);
+  }
+  .ncnote {
+    color: var(--fg-3);
   }
   .tip-stat .rarity {
     color: var(--fg-0);
