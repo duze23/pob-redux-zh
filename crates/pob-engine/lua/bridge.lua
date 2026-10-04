@@ -1818,6 +1818,7 @@ end
 function nodeUtil.powerKey(node)
 	local env = build.calcsTab.mainEnv
 	local key = node.modKey .. "|" .. node.type .. (node.isAttribute and "|attribute" or "") .. "|" .. (node.allocMode or 0)
+		.. (node.isTattoo and "|" .. tostring(node.overrideType) or "")
 	for index, rad in ipairs(env and env.radiusJewelList or {}) do
 		if rad.nodes[node.id] then key = key .. "|" .. index end
 	end
