@@ -89,7 +89,7 @@ if (pinned) {
 }
 
 out.push(
-  "Windows: run the `.exe` installer. Linux: `.rpm` on Fedora and openSUSE, `.deb` on Debian and Ubuntu, or the `.AppImage`. macOS: open the `.dmg`.",
+  "Windows: run the `.exe` installer. Linux: `.rpm` on Fedora and openSUSE, `.deb` on Debian, Ubuntu and Chromebooks, or the `.AppImage`. The `aarch64` and `arm64` files are for ARM64 Linux. macOS: open the `.dmg`.",
   "Installed copies update themselves once a newer release is published.",
   "",
 );

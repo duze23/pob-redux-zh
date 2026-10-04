@@ -8,7 +8,7 @@ _pkgname=pob-redux
 pkgver=0.2.17
 pkgrel=1
 pkgdesc="Path of Building for Path of Exile 1 and 2, rebuilt"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://pobredux.com"
 license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'libsoup3' 'glib2' 'cairo' 'gdk-pixbuf2' 'dbus' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
@@ -17,10 +17,12 @@ optdepends=('gnome-keyring: store assistant API keys'
 provides=("$_pkgname")
 conflicts=("$_pkgname")
 options=('!strip' '!debug')
-source=("$_pkgname-$pkgver.deb::https://github.com/pobredux/pob-redux/releases/download/v$pkgver/PoB.Redux_${pkgver}_amd64.deb"
-        "LICENSE-$pkgver::https://raw.githubusercontent.com/pobredux/pob-redux/v$pkgver/LICENSE")
-sha256sums=('SKIP'
-            'SKIP')
+source=("LICENSE-$pkgver::https://raw.githubusercontent.com/pobredux/pob-redux/v$pkgver/LICENSE")
+source_x86_64=("$_pkgname-$pkgver-x86_64.deb::https://github.com/pobredux/pob-redux/releases/download/v$pkgver/PoB.Redux_${pkgver}_amd64.deb")
+source_aarch64=("$_pkgname-$pkgver-aarch64.deb::https://github.com/pobredux/pob-redux/releases/download/v$pkgver/PoB.Redux_${pkgver}_arm64.deb")
+sha256sums=('SKIP')
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
 
 package() {
   bsdtar -xf data.tar.* -C "$pkgdir"

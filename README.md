@@ -24,6 +24,8 @@ calculation code, so every number matches Path of Building, and it opens the sam
 | Fedora, openSUSE | `PoB.Redux-<version>-1.x86_64.rpm` | Install with your package manager. |
 | Debian, Ubuntu | `PoB.Redux_<version>_amd64.deb` | Install with your package manager. |
 | Any other Linux | `PoB.Redux_<version>_amd64.AppImage` | `chmod +x` the file, then run it. |
+| Linux on ARM64 | `PoB.Redux-<version>-1.aarch64.rpm`, `PoB.Redux_<version>_arm64.deb` or `PoB.Redux_<version>_aarch64.AppImage` | Same as the x86_64 files above. |
+| Chromebook | `PoB.Redux_<version>_amd64.deb`, or `_arm64.deb` on an ARM Chromebook | Turn on Linux in ChromeOS Settings, then open the file in the Files app and choose **Install with Linux**. |
 
 There is no build for Intel Macs.
 
