@@ -388,14 +388,32 @@
     return rows.sort((x, y) => y.score - x.score).slice(0, 60);
   });
 
+  let focusNode = $state<number | null>(null);
+  let focusT0 = 0;
+  const PULSE_WAVES = 3;
+  const PULSE_GAP = 280;
+  const PULSE_MS = 900;
+
   function jumpTo(id: number) {
     const n = model?.nodes.get(id);
     if (!n) return;
     cx = n.x;
     cy = n.y;
     if (scale < 0.2) scale = 0.25;
+    focusNode = id;
+    focusT0 = performance.now();
     invalidate();
   }
+
+  function clearFocus() {
+    if (focusNode === null) return;
+    focusNode = null;
+    invalidate();
+  }
+
+  $effect(() => {
+    if (!powerOn || !showReport) untrack(clearFocus);
+  });
 
   $effect(() => {
     const j = ui.jump;
@@ -855,7 +873,47 @@
     blitTiles(ctx, T, V, "nodes");
     if (H) drawHoverNodes(ctx, S, V, H);
     drawRings(ctx, S, V);
-    if (more) invalidate();
+    const pulsing = drawFocus(ctx, V);
+    if (more || pulsing) invalidate();
+  }
+
+  /** True while the jump pulse is still running. */
+  function drawFocus(ctx: CanvasRenderingContext2D, V: View): boolean {
+    const n = focusNode !== null ? model?.nodes.get(focusNode) : undefined;
+    if (!n) return false;
+    const { tx, ty } = viewMath(V);
+    const sx = tx(n.x);
+    const sy = ty(n.y);
+    const r = Math.max(n.r, 30) * scale + 9;
+    const age = animate ? performance.now() - focusT0 : Infinity;
+    const end = (PULSE_WAVES - 1) * PULSE_GAP + PULSE_MS;
+    ctx.save();
+    ctx.strokeStyle = palette.nodeAlloc;
+    for (let k = 0; k < PULSE_WAVES; k++) {
+      const p = (age - k * PULSE_GAP) / PULSE_MS;
+      if (p < 0 || p >= 1) continue;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + p * 44, 0, Math.PI * 2);
+      ctx.globalAlpha = (1 - p) * 0.85;
+      ctx.lineWidth = 3 - p * 2;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(sx + dx * (r + 5), sy + dy * (r + 5));
+      ctx.lineTo(sx + dx * (r + 14), sy + dy * (r + 14));
+    }
+    ctx.lineCap = "round";
+    ctx.strokeStyle = palette.bg;
+    ctx.lineWidth = 5.5;
+    ctx.stroke();
+    ctx.strokeStyle = palette.nodeAlloc;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+    return age < end;
   }
 
   const EDGE_ORDER = ["Normal", "Intermediate", "Set1Path", "Set2Path", "Active", "Set1", "Set2", "CompareGain", "CompareLoss", "Depend"] as const;
@@ -1836,7 +1894,8 @@
     const wasClick = !drag.moved;
     const button = drag.button;
     drag = null;
-    if (!wasClick) invalidate();
+    if (wasClick) clearFocus();
+    else invalidate();
     if (!wasClick || !hover || build.busy > 0) return;
     const n = hover;
     if (button === 0 && shiftDown && trace.length) {
@@ -1907,6 +1966,7 @@
     else if (e.key === "a") focusAscendancy();
     else if (e.key === "p") powerOn = !powerOn;
     else if (e.key === "r" && powerOn) showReport = !showReport;
+    else if (e.key === "Escape" && focusNode !== null) clearFocus();
     else if (e.key === "d" && modKey(e)) ui.setTreeStatDiff(!ui.treeStatDiff);
     else if (e.key === "f" && !e.ctrlKey && !e.metaKey) fitAll();
     else if (e.key === "/" || (e.key === "f" && modKey(e))) {
@@ -2180,7 +2240,7 @@
     {/if}
     <div class="group">
       <span class="hinted">
-        <input class="input search" placeholder={m.tree_search()} bind:value={search} bind:this={searchEl} onkeydown={(e) => e.key === "Enter" && jumpToMatch()} />
+        <input class="input search" placeholder={m.tree_search()} bind:value={search} bind:this={searchEl} oninput={clearFocus} onkeydown={(e) => e.key === "Enter" && jumpToMatch()} />
         {#if !search}<Kbd keys="Mod+F" hint />{/if}
       </span>
       {#if matches.size}<span class="dim num">{matches.size}</span>{/if}
@@ -2281,7 +2341,7 @@
         </div>
         <div class="report-list">
           {#each reportRows as r (r.id)}
-            <button class="report-row" onclick={() => jumpTo(r.id)} onmouseenter={() => { const n = model?.nodes.get(r.id); if (n) setHover(n); }}>
+            <button class="report-row" class:sel={focusNode === r.id} onclick={() => jumpTo(r.id)} onmouseenter={() => { const n = model?.nodes.get(r.id); if (n) setHover(n); }}>
               <span class="rn">{r.name}</span>
               <span class="r num"><PobText text={r.a} /></span>
               <span class="r num"><PobText text={r.b} /></span>
@@ -2712,6 +2772,11 @@
   .report-row:hover {
     background: var(--bg-2);
     color: var(--fg-0);
+  }
+  .report-row.sel {
+    background: color-mix(in oklab, var(--focus) var(--sel-mix), var(--bg-1));
+    color: var(--fg-0);
+    box-shadow: inset 2px 0 0 var(--focus);
   }
   .rn {
     white-space: nowrap;
