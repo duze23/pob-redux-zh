@@ -404,6 +404,61 @@ optgroup {
 optgroup {
   color: var(--fg-2);
 }
+/* WebView2 lets the open list be styled; WebKit keeps the platform list above. */
+@supports (appearance: base-select) {
+  select {
+    appearance: base-select !important;
+    align-items: center;
+    white-space: nowrap;
+    overflow: clip;
+    overflow-clip-margin: content-box;
+  }
+  select::picker-icon {
+    display: none;
+  }
+  select::picker(select) {
+    appearance: base-select;
+    margin-block: 4px;
+    padding: 4px;
+    max-height: min(420px, 60vh);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-1);
+    background: var(--bg-2);
+    color: var(--fg-1);
+    box-shadow: var(--shadow-pop);
+    scrollbar-width: thin;
+  }
+  select option {
+    padding: 5px 8px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--fg-1);
+    font-size: var(--fs-sm);
+    white-space: nowrap;
+  }
+  select option::checkmark {
+    display: none;
+  }
+  select option:checked {
+    background: var(--bg-active);
+    color: var(--fg-0);
+  }
+  select option:hover,
+  select option:focus-visible {
+    background: var(--bg-hover);
+    color: var(--fg-0);
+    outline: none;
+  }
+  select option:disabled {
+    opacity: var(--fade-off);
+  }
+  select optgroup {
+    padding-top: 4px;
+    background: transparent;
+    color: var(--fg-3);
+    font-size: var(--fs-xs);
+  }
+}
 
 .select {
   padding-right: 22px;
