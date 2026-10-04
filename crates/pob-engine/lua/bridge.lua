@@ -1792,6 +1792,20 @@ function nodeUtil.mainPath(node)
 	return path, moved
 end
 
+function nodeUtil.openMastery(node)
+	return not IS_POE2 and node.type == "Mastery" and node.allMasteryOptions and true or false
+end
+
+--- Must match PowerBuilder's cache key: one modKey can stand for nodes that calculate differently.
+function nodeUtil.powerKey(node)
+	local env = build.calcsTab.mainEnv
+	local key = node.modKey .. "|" .. node.type .. (node.isAttribute and "|attribute" or "") .. "|" .. (node.allocMode or 0)
+	for index, rad in ipairs(env and env.radiusJewelList or {}) do
+		if rad.nodes[node.id] then key = key .. "|" .. index end
+	end
+	return key
+end
+
 -- PassiveTreeView's rule for keystones and jewel sockets: the reason a click is refused, or nil.
 local function weaponSetBlock(node, mode)
 	if not IS_POE2 or not (node.type == "Keystone" or node.type == "Socket" or node.containJewelSocket) then return nil end
@@ -2311,18 +2325,20 @@ M.tree_power_partition = function(p)
 			end
 			if not hidden then
 				local dist = node.pathDist or 1000
-				for _, leap in ipairs(node.intuitiveLeapLikesAffecting or {}) do
-					if leap.alloc then dist = math.max(math.min(leap.pathDist or 1000, dist), 1) end
+				-- PoE1 PowerBuilder scores an open mastery at its plain path distance.
+				if not nodeUtil.openMastery(node) then
+					for _, leap in ipairs(node.intuitiveLeapLikesAffecting or {}) do
+						if leap.alloc then dist = math.max(math.min(leap.pathDist or 1000, dist), 1) end
+					end
 				end
 				node.power.distance = dist
 				if (not calcsTab.nodePowerMaxDepth) or dist <= calcsTab.nodePowerMaxDepth then
-					list[#list + 1] = { id = nodeId, dist = dist, modKey = node.modKey }
+					list[#list + 1] = { id = nodeId, dist = dist, modKey = nodeUtil.powerKey(node) }
 				end
 			end
 		end
 	end
-	-- identical mod keys share one calc in PowerBuilder's cache; keep them
-	-- adjacent so a contiguous slice lands on one worker
+	-- nodes with one cache key share one calc; keep them adjacent so a contiguous slice lands on one worker
 	table.sort(list, function(a, b)
 		if a.modKey ~= b.modKey then return a.modKey < b.modKey end
 		return a.id < b.id
@@ -2374,15 +2390,55 @@ local function scoreNodes(p)
 		if node then
 			local dist = num(p.dists and p.dists[i]) or node.pathDist or 1000
 			local r = { id = id, dist = dist }
-			if not node.alloc then
+			if nodeUtil.openMastery(node) then
+				-- PoE1 PowerBuilder: only one effect can be taken, so the mastery scores as its best one, floored at 0.
+				local spec = build.spec
+				for _, choice in ipairs(node.masteryEffects or {}) do
+					local takenBy = isValueInTable(spec.masterySelections, choice.effect)
+					local effect = (not takenBy or takenBy == node.id) and spec.tree.masteryEffects[choice.effect]
+					if effect then
+						local effectNode = { id = node.id, type = node.type, name = node.name, sd = {} }
+						for k, line in ipairs(effect.sd or {}) do effectNode.sd[k] = line end
+						spec.tree:ProcessStats(effectNode)
+						if effectNode.modKey ~= "" then
+							if not cache[effectNode.modKey] then
+								cache[effectNode.modKey] = calcFunc({ addNodes = { [effectNode] = true } }, useFullDPS)
+							end
+							local output = cache[effectNode.modKey]
+							if powerStat and powerStat.stat and not powerStat.ignoreForNodes then
+								local s = calcsTab:CalculatePowerStat(powerStat, output, calcBase)
+								local pathPower = s
+								if node.path and not node.ascendancyName then
+									r.rank = true
+									if dist > 1 then
+										local set = pathSet(i, node.path)
+										set[node] = nil
+										set[effectNode] = true
+										pathPower = calcsTab:CalculatePowerStat(powerStat, calcFunc({ addNodes = set }, useFullDPS), calcBase)
+									end
+								end
+								r.s = math.max(r.s or 0, s)
+								r.p = math.max(r.p or 0, pathPower)
+							elseif not powerStat or not powerStat.ignoreForNodes then
+								local o, d = calcsTab:CalculateCombinedOffDefStat(output, calcBase)
+								r.o = math.max(r.o or 0, o)
+								r.d = math.max(r.d or 0, d)
+								r.s = math.max(r.s or 0, o)
+								if node.path and not node.ascendancyName then r.rank = true end
+							end
+						end
+					end
+				end
+			elseif not node.alloc then
 				if p.moves then
 					local _, moved = nodeUtil.mainPath(node)
 					if moved > 0 then r.moved = moved end
 				end
-				if not cache[node.modKey] then
-					cache[node.modKey] = calcFunc({ addNodes = { [node] = true } }, useFullDPS)
+				local key = nodeUtil.powerKey(node)
+				if not cache[key] then
+					cache[key] = calcFunc({ addNodes = { [node] = true } }, useFullDPS)
 				end
-				local output = cache[node.modKey]
+				local output = cache[key]
 				if powerStat and powerStat.stat and not powerStat.ignoreForNodes then
 					r.s = calcsTab:CalculatePowerStat(powerStat, output, calcBase)
 					if node.path and not node.ascendancyName then
@@ -2398,7 +2454,7 @@ local function scoreNodes(p)
 					if node.path and not node.ascendancyName then r.rank = true end
 				end
 			else
-				local key = node.modKey .. "_remove"
+				local key = nodeUtil.powerKey(node) .. "_remove"
 				if not cache[key] then
 					cache[key] = calcFunc({ removeNodes = { [node] = true } }, useFullDPS)
 				end
