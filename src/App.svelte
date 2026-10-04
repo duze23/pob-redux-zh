@@ -4,6 +4,8 @@
   import Sidebar from "$lib/components/Sidebar.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import TreeView from "$lib/views/TreeView.svelte";
+  import OverviewView from "$lib/views/OverviewView.svelte";
+  import CharacterDialog from "$lib/components/CharacterDialog.svelte";
   import SkillsView from "$lib/views/SkillsView.svelte";
   import ItemsView from "$lib/views/ItemsView.svelte";
   import CalcsView from "$lib/views/CalcsView.svelte";
@@ -104,6 +106,8 @@
             </div>
           </div>
         </div>
+      {:else if build.view === "overview"}
+        <OverviewView />
       {:else if build.view === "tree"}
         <TreeView />
       {:else if build.view === "skills"}
@@ -133,6 +137,7 @@
   <StatusBar {status} {paths} />
   <ConfirmModal />
   <CommandPalette />
+  {#if ui.newBuildOpen && build.loaded}<CharacterDialog mode="new" onclose={() => (ui.newBuildOpen = false)} />{/if}
   <Tooltip />
   {#if game.firstRun}
     <div class="pick-backdrop">

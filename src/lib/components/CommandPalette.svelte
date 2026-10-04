@@ -104,7 +104,7 @@
       );
     }
     list.push(
-      { id: "new", group: g, label: m.palette_new_build(), run: () => build.newBuild() },
+      { id: "new", group: g, label: m.palette_new_build(), run: () => build.newBuild().then((r) => r && (ui.newBuildOpen = true)) },
       { id: "assistant", group: g, label: m.palette_assistant(), keys: "Mod+L", run: () => chat.toggle() },
       { id: "sidebar", group: g, label: m.palette_sidebar(), keys: "Mod+B", run: () => ui.toggleSidebar() },
       { id: "options", group: g, label: m.palette_options(), keys: "Mod+,", run: () => (appOptions.open = true) },
@@ -119,6 +119,7 @@
     const g = m.palette_group_goto();
     const all: [ViewId, string, string][] = [
       ["import", m.view_builds(), "1"],
+      ["overview", m.view_overview(), ""],
       ["tree", m.view_tree(), "2"],
       ["skills", m.view_skills(), "3"],
       ["items", m.view_items(), "4"],
@@ -131,7 +132,7 @@
     ];
     return all
       .filter(([id]) => build.loaded || id === "import")
-      .map(([id, label, key]) => ({ id: `view-${id}`, group: g, label, keys: `Mod+${key}`, run: () => goTo(id) }));
+      .map(([id, label, key]) => ({ id: `view-${id}`, group: g, label, keys: key ? `Mod+${key}` : undefined, run: () => goTo(id) }));
   });
 
   const content = $derived.by((): Entry[] => {

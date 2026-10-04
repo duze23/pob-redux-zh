@@ -26,7 +26,7 @@ export function autosaveKey() {
   return game.isPoe2 ? AUTOSAVE_KEY : `${AUTOSAVE_KEY}:${game.current}`;
 }
 
-export type ViewId = "tree" | "skills" | "items" | "calcs" | "config" | "notes" | "party" | "optimise" | "compare" | "import";
+export type ViewId = "overview" | "tree" | "skills" | "items" | "calcs" | "config" | "notes" | "party" | "optimise" | "compare" | "import";
 
 /**
  * The one live build. Mutations go through the engine and then re-pull the

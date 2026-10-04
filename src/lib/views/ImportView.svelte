@@ -41,6 +41,7 @@
   } from "$lib/engine.svelte";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { build, autosaveKey } from "$lib/state/build.svelte";
+  import { ui } from "$lib/state/ui.svelte";
   import { app } from "$lib/state/app.svelte";
   import { planner, AUTHOR_KEY } from "$lib/state/planner.svelte";
   import { game } from "$lib/state/game.svelte";
@@ -928,7 +929,7 @@
       <span class="vr"></span>
       <button class="btn sm" onclick={openXml}>{m.import_open_file()}</button>
       <button class="btn sm" onclick={() => (newFolder = "")}>{m.import_new_folder()}</button>
-      <button class="btn sm primary" onclick={() => build.newBuild()} disabled={build.busy > 0}>{m.import_new_build()}</button>
+      <button class="btn sm primary" onclick={() => build.newBuild().then((r) => r && (ui.newBuildOpen = true))} disabled={build.busy > 0}>{m.import_new_build()}</button>
     </div>
     <div class="list">
       {#if newFolder !== null}

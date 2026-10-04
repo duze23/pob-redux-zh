@@ -37,6 +37,7 @@ class UiStore {
   treeStatDiff = $state(true);
   treeAscCentre = $state(true);
   paletteOpen = $state(false);
+  newBuildOpen = $state(false);
   jump = $state<Jump | null>(null);
 
   private systemLight = window.matchMedia("(prefers-color-scheme: light)");

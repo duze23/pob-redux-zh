@@ -40,6 +40,7 @@ export class AssetStore {
   private slots = new Map<string, Slot>();
   private tinted = new Map<string, HTMLCanvasElement>();
   onReady: () => void = () => {};
+  private listeners = new Set<() => void>();
 
   constructor(readonly manifest: AssetManifest) {}
 
@@ -51,6 +52,12 @@ export class AssetStore {
     } catch {
       return null;
     }
+  }
+
+  /** Called whenever another sheet finishes loading; returns the unsubscribe. */
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
   }
 
   has(name: string): boolean {
@@ -72,6 +79,7 @@ export class AssetStore {
         slot.img = img;
         slot.ready = true;
         this.onReady();
+        for (const fn of this.listeners) fn();
       };
       const element = () => {
         const img = new Image();
