@@ -353,8 +353,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Fixes carried in `patches/<game>/` until upstream merges them. Each file the
-/// patch touches is recopied from the source first, so a re-run applies cleanly.
+/// Fixes carried in `patches/<game>/` until upstream merges them. Every file a
+/// patch touches is recopied from the source once, before any patch applies, so
+/// a re-run applies cleanly and later patches can build on earlier ones.
 fn apply_patches(dir: &Path, src: &Path, dest: &Path, wanted: &mut HashSet<PathBuf>) -> Result<Vec<String>> {
     let Ok(entries) = fs::read_dir(dir) else { return Ok(Vec::new()) };
     let mut names: Vec<String> = entries
@@ -363,20 +364,25 @@ fn apply_patches(dir: &Path, src: &Path, dest: &Path, wanted: &mut HashSet<PathB
         .filter(|n| n.ends_with(".patch"))
         .collect();
     names.sort();
-    for name in &names {
-        let patch = plain_path(&dir.join(name));
-        let patch = patch.to_string_lossy();
-        let touched = git_apply(dest, &["--numstat", &patch]).with_context(|| format!("read {name}"))?;
+    let patches: Vec<String> = names.iter().map(|n| plain_path(&dir.join(n)).to_string_lossy().to_string()).collect();
+    let mut recopied = HashSet::new();
+    for (name, patch) in names.iter().zip(&patches) {
+        let touched = git_apply(dest, &["--numstat", patch]).with_context(|| format!("read {name}"))?;
         for line in touched.lines() {
             let Some(rel) = line.split('\t').nth(2) else { continue };
             let rel = PathBuf::from(rel);
+            wanted.insert(rel.clone());
+            if !recopied.insert(rel.clone()) {
+                continue;
+            }
             let from = src.join(&rel);
             if from.is_file() {
                 fs::copy(&from, dest.join(&rel)).with_context(|| format!("recopy {}", rel.display()))?;
             }
-            wanted.insert(rel);
         }
-        git_apply(dest, &[&patch]).with_context(|| format!("apply {name}"))?;
+    }
+    for (name, patch) in names.iter().zip(&patches) {
+        git_apply(dest, &[patch]).with_context(|| format!("apply {name}"))?;
     }
     Ok(names)
 }
