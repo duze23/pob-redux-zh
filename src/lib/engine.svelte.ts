@@ -694,6 +694,8 @@ export interface GemInfo {
   socketColour?: string | null;
   count: number | null;
   countable: boolean;
+  /** PoE1 Vaal gems: the Vaal skill and its base skill, each switched on or off on its own. */
+  globalEffects?: { index: 1 | 2; name: string; enabled: boolean }[] | null;
   errMsg: string | null;
   /** Set when the game hands the skill out (a weapon's default attack, Raise Shield, a unique's skill): says what it comes with. */
   granted: string | null;
@@ -1668,7 +1670,11 @@ export const engine = {
   deleteSkillSet: (id: number) => call<Skills>("delete_skill_set", { id }),
   setSocketGroup: (index: number, patch: Partial<Pick<SocketGroup, "enabled" | "includeInFullDPS" | "label" | "slot" | "mainActiveSkill" | "groupCount">>) =>
     call<Skills>("set_socket_group", { index, ...patch }),
-  setGem: (groupIndex: number, gemIndex: number, patch: Partial<Pick<GemInfo, "level" | "quality" | "enabled" | "count">>) =>
+  setGem: (
+    groupIndex: number,
+    gemIndex: number,
+    patch: Partial<Pick<GemInfo, "level" | "quality" | "enabled" | "count">> & { enableGlobal1?: boolean; enableGlobal2?: boolean },
+  ) =>
     call<Skills>("set_gem", { groupIndex, gemIndex, ...patch }),
   listSlots: () => call<SlotsResponse>("list_slots"),
   getItems: () => call<{ items: ItemInfo[] }>("get_items"),

@@ -3396,6 +3396,19 @@ M.get_skills = function()
 		end
 		return false
 	end
+	-- SkillsTab's enableGlobal1/2 checkboxes, shown only for PoE1 Vaal gems.
+	local function gemGlobalEffects(gem)
+		local gd = gem.gemData
+		if IS_POE2 or not (gd and gd.vaalGem) then return null end
+		local list = array({})
+		for n = 1, 2 do
+			local ge = gd.grantedEffectList[n]
+			if ge and not ge.support then
+				list[#list + 1] = { index = n, name = ge.name, enabled = gem["enableGlobal" .. n] == true }
+			end
+		end
+		return #list > 0 and list or null
+	end
 	local groups = array({})
 	for i, group in ipairs(build.skillsTab.socketGroupList) do
 		local gems = array({})
@@ -3416,6 +3429,7 @@ M.get_skills = function()
 				socketColour = opt(gd and gd.grantedEffect and ({ "R", "G", "B", "W" })[gd.grantedEffect.color]),
 				count = opt(gem.count),
 				countable = gemCountable(group, gi, gem),
+				globalEffects = gemGlobalEffects(gem),
 				errMsg = opt(gem.errMsg),
 				-- Set for skills the game grants (default weapon attacks, Raise
 				-- Shield, unique-granted skills): not a socket the player filled.
@@ -4075,6 +4089,8 @@ M.set_gem = function(p)
 	if p.level ~= nil then gem.level = tonumber(p.level) end
 	if p.quality ~= nil then gem.quality = tonumber(p.quality) end
 	if p.enabled ~= nil then gem.enabled = p.enabled end
+	if p.enableGlobal1 ~= nil then gem.enableGlobal1 = p.enableGlobal1 == true end
+	if p.enableGlobal2 ~= nil then gem.enableGlobal2 = p.enableGlobal2 == true end
 	if p.count ~= nil then
 		local count = math.max(0, tonumber(p.count) or 1)
 		gem.count = IS_POE2 and count or math.floor(count)

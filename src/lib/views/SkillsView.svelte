@@ -454,6 +454,20 @@
                 <span></span>
               {/if}
               <button class="mini x" title={m.skills_remove_gem()} onclick={() => build.run(() => engine.removeGem(sel.index, gem.index))}>✕</button>
+              {#if gem.globalEffects?.length}
+                <span class="effects">
+                  {#each gem.globalEffects as effect (effect.index)}
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={effect.enabled}
+                        onchange={(e) => patchGem(sel.index, gem.index, { [`enableGlobal${effect.index}`]: (e.target as HTMLInputElement).checked })}
+                      />
+                      {m.skills_enable_effect({ name: effect.name })}
+                    </label>
+                  {/each}
+                </span>
+              {/if}
             </div>
           {/each}
 
@@ -718,6 +732,18 @@
   }
   .gemname.sup {
     padding-left: 14px;
+  }
+  .effects {
+    grid-column: 2 / -1;
+    display: flex;
+    gap: 16px;
+    color: var(--fg-2);
+    font-size: var(--fs-xs);
+  }
+  .effects label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .err {
     color: var(--bad);

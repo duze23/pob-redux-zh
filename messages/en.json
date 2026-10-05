@@ -857,6 +857,7 @@
   "skills_col_count": "Count",
   "skills_gem_count_title": "How many of this skill add to its DPS. Use it for minions, totems, traps and mines, and for projectiles that can all hit one target.",
   "skills_remove_gem": "Remove gem",
+  "skills_enable_effect": "Enable {name}",
   "skills_add_gem": "Add a gem… (name, or tag like 'projectile')",
   "skills_dps": "DPS",
   "skills_dps_title": "Score every valid support by its DPS impact and sort by it (first run takes a moment)",
