@@ -8849,7 +8849,9 @@ end
 function keystone.rules(k)
 	local rules = array({})
 	if k.chaosImmune then
-		rules[#rules + 1] = "Maximum life is 1 (Chaos Inoculation): life lines and life recovery do nothing, and chaos resistance does not matter because the build is immune to chaos damage. Energy shield is the pool to raise."
+		rules[#rules + 1] = IS_POE2
+			and "Maximum life is 1 (Chaos Inoculation): life lines and life recovery do nothing, and chaos resistance and bleed avoidance do not matter because the build is immune to chaos damage and bleeding. Energy shield is the pool to raise."
+			or "Maximum life is 1 (Chaos Inoculation): life lines and life recovery do nothing, and chaos resistance does not matter because the build is immune to chaos damage. Energy shield is the pool to raise."
 	end
 	if k.esToMana > 0 then
 		rules[#rules + 1] = string.format("%d%% of energy shield becomes mana (Eldritch Battery): energy shield lines raise mana.", k.esToMana)
