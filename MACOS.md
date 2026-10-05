@@ -68,11 +68,20 @@ into `src-tauri/resources`, and a `target/` directory that reaches 4.7 GB.
 
 ## Signing
 
-Ad-hoc builds run fine locally, and that is what `bun run tauri build` produces without a signing
-identity. Hardened runtime is off in that case, so LuaJIT's JIT is unrestricted.
+Releases are ad-hoc signed: `tauri.conf.json` sets `signingIdentity` to `"-"`, so the bundler signs the
+whole `.app`. Without it, only the executable carries the linker's signature, nothing else in the
+bundle is sealed, and a downloaded copy fails Gatekeeper as "damaged" instead of showing the prompt
+above. To check a build:
 
-Signing with a Developer ID turns hardened runtime on, and that is when `entitlements.plist` starts to
-matter: PoB's calculations run under LuaJIT, whose trace compiler writes native arm64 code and then
-executes it, which the hardened runtime blocks without `com.apple.security.cs.allow-jit`. The
-entitlement is declared in `tauri.conf.json` but has not been exercised, because doing so needs a paid
-Apple Developer account.
+```sh
+codesign --verify --deep --strict -vv "target/release/bundle/macos/PoB Redux.app"
+```
+
+Hardened runtime is off. An ad-hoc build with it on is killed at launch, before the engine boots, and
+it is only needed for notarization.
+
+Signing with a Developer ID means setting `signingIdentity` to that identity and turning
+`hardenedRuntime` back on. PoB's calculations run under LuaJIT, whose trace compiler writes native
+arm64 code and then executes it, so the hardened runtime needs `com.apple.security.cs.allow-jit` from
+`entitlements.plist`. That has not been tested with a real Developer ID, because it needs a paid Apple
+Developer account.

@@ -70,6 +70,8 @@
     },
     "macOS": {
       "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
       "entitlements": "entitlements.plist"
     }
   }
