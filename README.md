@@ -111,9 +111,9 @@ when the app closes, and refuses any request without the token.
 
 ### macOS says the app cannot be opened
 
-The app is not signed or notarized yet, so macOS blocks the first launch. On macOS 15 or later, open
-System Settings → Privacy & Security and click **Open Anyway**. On macOS 14 and earlier, right-click
-the app and choose **Open**. [MACOS.md](MACOS.md) has more detail.
+The app is not signed with an Apple Developer ID or notarized yet, so macOS blocks the first launch.
+On macOS 15 or later, open System Settings → Privacy & Security and click **Open Anyway**. On macOS
+14 and earlier, right-click the app and choose **Open**. [MACOS.md](MACOS.md) has more detail.
 
 ### The window is black on Linux
 

@@ -136,6 +136,11 @@ jobs:
           uploadUpdaterJson: true
           args: --bundles ${{ matrix.bundles }}
 
+      # A bundle whose resources are not sealed opens as "damaged" once downloaded.
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict -vv "target/release/bundle/macos/PoB Redux.app"
+
       # Launch the AppImage on a virtual display and refuse a black window, the
       # failure WebKitGTK produces when its GPU path breaks. The script waits for
       # the window rather than sleeping a fixed time, which missed a cold start on
