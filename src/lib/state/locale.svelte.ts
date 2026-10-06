@@ -23,13 +23,18 @@ export const LOCALE_LABEL: Record<Locale, string> = {
   "pt-BR": "Português (Brasil)",
   ru: "Русский",
   th: "ไทย",
+  "zh-CN": "简体中文",
 };
 
 /** Tags the OS may report that no shipped locale matches exactly. */
 const ALIASES: Record<string, Locale> = { pt: "pt-BR", "pt-pt": "pt-BR" };
 
+/** Traditional-Chinese tags must not fall through to Simplified via the base match below. */
+const OTHER_CHINESE = new Set(["zh-tw", "zh-hk", "zh-mo", "zh-hant"]);
+
 function match(tag: string): Locale | undefined {
   const lower = tag.toLowerCase();
+  if (OTHER_CHINESE.has(lower)) return undefined;
   const exact = LOCALES.find((l) => l.toLowerCase() === lower);
   if (exact) return exact;
   if (ALIASES[lower]) return ALIASES[lower];
