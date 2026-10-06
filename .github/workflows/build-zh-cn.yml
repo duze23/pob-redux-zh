@@ -1,0 +1,77 @@
+name: build-zh-cn
+
+# 手动触发：在 fork 的 Actions 页面点 "Run workflow"。
+# 用途：在 GitHub 的 Windows 机器上编译一份带简体中文的 PoB Redux 安装包。
+#
+# 与官方 release.yml 的区别：
+#   1. 不走 tauri-action（它需要签名私钥），改用命令行直接构建
+#   2. 不做更新签名（fork 里没有私钥，也不需要）
+#   3. 产物用 upload-artifact 直接下载，不发 Release
+# 其余步骤（拉取上游 PoB 数据、编译 Rust、打包 NSIS）与官方保持一致。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read pinned PoB commits
+        id: pin
+        shell: bash
+        run: |
+          pin() { awk -v s="[$1]" '$0 == s {f=1; next} /^\[/ {f=0} f && /^commit/' pob-sync.toml | cut -d'"' -f2; }
+          echo "commit=$(pin poe2)" >> "$GITHUB_OUTPUT"
+          echo "commit1=$(pin poe1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PathOfBuilding-PoE2
+        uses: actions/checkout@v7
+        with:
+          repository: PathOfBuildingCommunity/PathOfBuilding-PoE2
+          ref: ${{ steps.pin.outputs.commit }}
+          path: upstream/PathOfBuilding-PoE2
+
+      - name: Checkout PathOfBuilding (PoE1)
+        uses: actions/checkout@v7
+        with:
+          repository: PathOfBuildingCommunity/PathOfBuilding
+          ref: ${{ steps.pin.outputs.commit1 }}
+          path: upstream/PathOfBuilding
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          shared-key: pob-redux-zh
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Vendor Path of Building
+        run: |
+          cargo run -p pob-sync -- --source upstream/PathOfBuilding-PoE2 --tree-assets
+          cargo run -p pob-sync -- --game poe1 --source upstream/PathOfBuilding --tree-assets
+
+      - name: Build the installer
+        run: bun run tauri build --bundles nsis
+
+      - name: Upload the installer
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pob-redux-zh-cn
+          path: |
+            target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
+          retention-days: 14
